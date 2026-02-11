@@ -1,52 +1,3 @@
-const rubricData = [
-  {
-    id: 'inhalt',
-    title: 'Inhalt Eroeffnungsrede',
-    weight: '8%',
-    maxPoints: 2,
-    criteria: [
-      'Korrektheit der Behauptungen',
-      'Schluessigkeit der Argumentation',
-      'Strategie',
-      'Problembewusstsein (u. a. Achtung vor Grundrechten)',
-      'Breite der Informationen (mit Blick auf die ergaenzende Rede)',
-      'Publikumsgerechtigkeit'
-    ]
-  },
-  {
-    id: 'form_text',
-    title: 'Form Eroeffnungsrede (Text)',
-    weight: '4%',
-    maxPoints: 1,
-    criteria: [
-      'Aufbau',
-      'Rhetorische Gestaltung und Stilistik',
-      'Sprachlogik',
-      'Umfang (2-3 Minuten)',
-      'Sprachliche Korrektheit'
-    ]
-  },
-  {
-    id: 'form_auftritt',
-    title: 'Form Eroeffnungsrede (Auftritt)',
-    weight: '8%',
-    maxPoints: 2,
-    criteria: [
-      'Freie Rede',
-      'Rollengerechtigkeit',
-      'Blickkontakt',
-      'Mimik',
-      'Gestik',
-      'Intonation',
-      'Tempo',
-      'Lautstaerke',
-      'Artikulation',
-      'Redefluss'
-    ]
-  }
-];
-
-const rubricRoot = document.getElementById('rubric');
 const videoInput = document.getElementById('videoInput');
 const videoPreview = document.getElementById('videoPreview');
 const videoMeta = document.getElementById('videoMeta');
@@ -72,50 +23,13 @@ let currentVideoFile = null;
 let audioMetrics = null;
 let visualMetrics = null;
 let lastAnalysis = null;
+let metadataLoaded = false;
 
 function setFeatureStatus(opts = {}) {
   const face = opts.face || ('FaceDetector' in window ? 'aktiv' : 'nicht verfuegbar');
   const audio = opts.audio || 'bereit';
   const frames = opts.frames || 'bereit';
   featureStatus.textContent = `FaceDetector: ${face} · Audioanalyse: ${audio} · Keyframes: ${frames}`;
-}
-
-function renderRubric() {
-  rubricRoot.innerHTML = '';
-  rubricData.forEach((section) => {
-    const wrap = document.createElement('div');
-    wrap.className = 'rubric-section';
-
-    const header = document.createElement('div');
-    header.className = 'rubric-header';
-    header.innerHTML = `<h3>${section.title}</h3><span>max. ${section.maxPoints} Punkte · Gewicht ${section.weight}</span>`;
-
-    const criteriaList = document.createElement('div');
-    criteriaList.className = 'criteria';
-
-    section.criteria.forEach((criterion, index) => {
-      const label = document.createElement('label');
-      label.dataset.section = section.id;
-      label.dataset.index = index;
-      label.innerHTML = `
-        <div>${criterion}</div>
-        <input type="range" min="0" max="${section.maxPoints}" step="0.5" value="0" />
-        <div class="value">Selbsteinschaetzung: <span>0</span> / ${section.maxPoints}</div>
-      `;
-      const input = label.querySelector('input');
-      const valueSpan = label.querySelector('span');
-      input.addEventListener('input', () => {
-        valueSpan.textContent = input.value;
-        label.classList.toggle('active', Number(input.value) > 0);
-      });
-
-      criteriaList.appendChild(label);
-    });
-
-    wrap.appendChild(header);
-    wrap.appendChild(criteriaList);
-    rubricRoot.appendChild(wrap);
-  });
 }
 
 function formatTime(seconds) {
@@ -154,11 +68,9 @@ async function analyzeAudio(file) {
     let silent = 0;
     let sum = 0;
     let peak = 0;
-    const energySeries = [];
 
     for (let i = 0; i < channel.length; i += step) {
       const sample = Math.abs(channel[i]);
-      energySeries.push(sample);
       sum += sample;
       if (sample < 0.02) silent += 1;
       if (sample > peak) peak = sample;
@@ -242,7 +154,6 @@ async function analyzeVideoFrames(onProgress) {
           }
         }
       } catch (_err) {
-        // FaceDetector can fail depending on browser/runtime; analysis continues.
       }
     }
 
@@ -273,27 +184,7 @@ async function analyzeVideoFrames(onProgress) {
   };
 }
 
-function collectScores() {
-  const sections = {};
-  let hasInput = false;
-
-  rubricData.forEach((section) => {
-    const inputs = Array.from(document.querySelectorAll(`[data-section="${section.id}"] input`));
-    const values = inputs.map((input) => Number(input.value));
-    if (values.some((v) => v > 0)) hasInput = true;
-    const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-
-    sections[section.id] = {
-      avg,
-      max: section.maxPoints,
-      title: section.title
-    };
-  });
-
-  return { sections, hasInput };
-}
-
-function videoScore({ duration, audio, visual }) {
+function autoScore({ duration, audio, visual }) {
   let score = 0;
   let max = 0;
 
@@ -327,7 +218,7 @@ function videoScore({ duration, audio, visual }) {
   return (score / max) * 5;
 }
 
-function buildFeedback({ duration, audio, visual, rubric }) {
+function buildFeedback({ duration, audio, visual }) {
   const feedback = [];
 
   if (!duration) {
@@ -363,15 +254,7 @@ function buildFeedback({ duration, audio, visual, rubric }) {
     }
   }
 
-  if (rubric.hasInput) {
-    Object.values(rubric.sections).forEach((section) => {
-      if (section.avg <= section.max * 0.6) {
-        feedback.push(`Im Bereich "${section.title}" ist Potenzial vorhanden. Uebe 1-2 Kriterien gezielt.`);
-      }
-    });
-  }
-
-  feedback.push('Naechster Lernschritt: exakt eine Stellschraube auswaehlen und die Rede danach erneut aufnehmen.');
+  feedback.push('Naechster Lernschritt: genau eine Stellschraube auswaehlen und die Rede erneut aufnehmen.');
   return feedback;
 }
 
@@ -380,23 +263,13 @@ function updateScoreboard({ duration, audio, visual }) {
   tempoScoreEl.textContent = tempoLabel(audio);
   pauseScoreEl.textContent = audio ? `${Math.round(audio.silentRatio * 100)}%` : '-';
 
-  if (visual && visual.motionEnergy !== undefined) {
-    gestureScoreEl.textContent = visual.motionEnergy.toFixed(3);
-  } else {
-    gestureScoreEl.textContent = '-';
-  }
-
-  if (visual && visual.facePresence !== null && visual.facePresence !== undefined) {
-    faceScoreEl.textContent = `${Math.round(visual.facePresence * 100)}%`;
-  } else {
-    faceScoreEl.textContent = '-';
-  }
-
-  if (visual && visual.eyeContactRatio !== null && visual.eyeContactRatio !== undefined) {
-    eyeScoreEl.textContent = `${Math.round(visual.eyeContactRatio * 100)}%`;
-  } else {
-    eyeScoreEl.textContent = '-';
-  }
+  gestureScoreEl.textContent = visual && visual.motionEnergy !== undefined ? visual.motionEnergy.toFixed(3) : '-';
+  faceScoreEl.textContent = visual && visual.facePresence !== null && visual.facePresence !== undefined
+    ? `${Math.round(visual.facePresence * 100)}%`
+    : '-';
+  eyeScoreEl.textContent = visual && visual.eyeContactRatio !== null && visual.eyeContactRatio !== undefined
+    ? `${Math.round(visual.eyeContactRatio * 100)}%`
+    : '-';
 
   if (duration) {
     if (duration < 120) timeHintEl.textContent = 'Unter 2 Minuten.';
@@ -419,11 +292,6 @@ function buildReport(data) {
   lines.push(`- Gesicht im Bild: ${data.visual && data.visual.facePresence !== null ? Math.round(data.visual.facePresence * 100) + '%' : '-'}`);
   lines.push(`- Blickkontakt (Proxy): ${data.visual && data.visual.eyeContactRatio !== null ? Math.round(data.visual.eyeContactRatio * 100) + '%' : '-'}`);
   lines.push('');
-  lines.push('## Selbsteinschaetzung');
-  Object.values(data.rubric.sections).forEach((section) => {
-    lines.push(`- ${section.title}: ${section.avg.toFixed(1)} / ${section.max}`);
-  });
-  lines.push('');
   lines.push('## Feedback');
   data.feedback.forEach((tip) => lines.push(`- ${tip}`));
   return lines.join('\n');
@@ -432,8 +300,8 @@ function buildReport(data) {
 function renderAiFeedback(data) {
   aiFeedback.innerHTML = '';
   if (!data) return;
-  const container = document.createElement('div');
 
+  const container = document.createElement('div');
   if (data.summary) {
     const p = document.createElement('p');
     p.textContent = data.summary;
@@ -467,18 +335,14 @@ function renderAiFeedback(data) {
 
 async function runLocalAnalysis() {
   if (!currentVideoFile || !getVideoDuration()) {
-    analysisStatus.textContent = 'Bitte zuerst ein Video laden.';
+    analysisStatus.textContent = 'Bitte zuerst ein abspielbares Video laden.';
     return;
   }
 
   analyzeBtn.disabled = true;
   analyzeBtn.textContent = 'Analyse laeuft...';
   analysisStatus.textContent = 'Audioanalyse laeuft...';
-  setFeatureStatus({
-    face: 'in Pruefung',
-    audio: 'laeuft',
-    frames: 'wartet'
-  });
+  setFeatureStatus({ face: 'in Pruefung', audio: 'laeuft', frames: 'wartet' });
 
   audioMetrics = await analyzeAudio(currentVideoFile);
   setFeatureStatus({
@@ -491,6 +355,7 @@ async function runLocalAnalysis() {
   visualMetrics = await analyzeVideoFrames((step, total) => {
     analysisStatus.textContent = `Videoanalyse: ${step}/${total} Frames`;
   });
+
   setFeatureStatus({
     face: visualMetrics && visualMetrics.detectorAvailable ? 'aktiv' : 'nicht verfuegbar',
     audio: audioMetrics ? 'ok' : 'nicht verfuegbar',
@@ -498,19 +363,10 @@ async function runLocalAnalysis() {
   });
 
   const duration = getVideoDuration();
-  const rubric = collectScores();
-  const autoScore = videoScore({ duration, audio: audioMetrics, visual: visualMetrics });
-  const rubricScore = Object.values(rubric.sections).reduce((sum, section) => sum + section.avg, 0);
-  const totalScore = rubric.hasInput ? (autoScore + rubricScore) / 2 : autoScore;
+  const score = autoScore({ duration, audio: audioMetrics, visual: visualMetrics });
+  const feedback = buildFeedback({ duration, audio: audioMetrics, visual: visualMetrics });
 
-  const feedback = buildFeedback({
-    duration,
-    audio: audioMetrics,
-    visual: visualMetrics,
-    rubric
-  });
-
-  totalScoreEl.textContent = totalScore.toFixed(1);
+  totalScoreEl.textContent = score.toFixed(1);
   updateScoreboard({ duration, audio: audioMetrics, visual: visualMetrics });
   feedbackEl.innerHTML = `<ul>${feedback.map((tip) => `<li>${tip}</li>`).join('')}</ul>`;
   analysisStatus.textContent = 'Analyse abgeschlossen.';
@@ -519,16 +375,21 @@ async function runLocalAnalysis() {
     duration,
     audio: audioMetrics,
     visual: visualMetrics,
-    rubric,
     feedback,
-    score: totalScore
+    score
   };
 
   analyzeBtn.disabled = false;
   analyzeBtn.textContent = 'Video erneut analysieren';
 }
 
-renderRubric();
+function handleVideoLoadFailure() {
+  const ext = currentVideoFile?.name?.split('.').pop()?.toLowerCase() || '';
+  const movHint = ext === 'mov' ? ' MOV wird in manchen Browsern nicht dekodiert. Exportiere als MP4 (H.264 + AAC).' : '';
+  analysisStatus.textContent = `Video konnte nicht verarbeitet werden.${movHint}`;
+  videoMeta.textContent = currentVideoFile ? `Datei: ${currentVideoFile.name} · nicht abspielbar` : 'Noch kein Video geladen.';
+}
+
 setFeatureStatus();
 
 videoInput.addEventListener('change', async (event) => {
@@ -536,16 +397,38 @@ videoInput.addEventListener('change', async (event) => {
   if (!file) return;
 
   currentVideoFile = file;
+  metadataLoaded = false;
+
   const url = URL.createObjectURL(file);
   videoPreview.src = url;
   videoPreview.load();
 
-  videoPreview.onloadedmetadata = async () => {
-    videoMeta.textContent = `Datei: ${file.name} · Dauer: ${formatTime(videoPreview.duration)}`;
-    analysisStatus.textContent = 'Video geladen. Starte automatische Analyse...';
-    await runLocalAnalysis();
-  };
+  videoMeta.textContent = `Datei: ${file.name} · wird geladen...`;
+  analysisStatus.textContent = 'Video wird vorbereitet...';
+
+  setTimeout(() => {
+    if (!metadataLoaded) {
+      handleVideoLoadFailure();
+    }
+  }, 5000);
 });
+
+videoPreview.addEventListener('loadedmetadata', async () => {
+  metadataLoaded = true;
+  videoMeta.textContent = `Datei: ${currentVideoFile.name} · Dauer: ${formatTime(videoPreview.duration)}`;
+  analysisStatus.textContent = 'Video geladen. Starte automatische Analyse...';
+  await runLocalAnalysis();
+});
+
+videoPreview.addEventListener('error', () => {
+  metadataLoaded = false;
+  handleVideoLoadFailure();
+});
+
+videoPreview.addEventListener('stalled', () => {
+  if (!metadataLoaded) handleVideoLoadFailure();
+});
+
 analyzeBtn.addEventListener('click', runLocalAnalysis);
 
 downloadBtn.addEventListener('click', () => {
@@ -587,7 +470,6 @@ aiBtn.addEventListener('click', async () => {
           facePresence: lastAnalysis.visual ? lastAnalysis.visual.facePresence : null,
           eyeContactRatio: lastAnalysis.visual ? lastAnalysis.visual.eyeContactRatio : null
         },
-        scores: lastAnalysis.rubric.sections,
         videoFrames: lastAnalysis.visual ? lastAnalysis.visual.keyframes : []
       })
     });

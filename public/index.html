@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Reden‑Beurteilungsroboter – Eröffnungsrede</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <title>Reden-Beurteilungsroboter - Eroeffnungsrede</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <div class="hero">
     <header>
-      <p class="eyebrow">Eröffnungsrede · Analyse & Feedback</p>
-      <h1>Reden‑Beurteilungsroboter</h1>
-      <p class="lead">Lade dein Video hoch, bewerte deine Rede entlang der Kriterien und erhalte lernfoerderliche Tipps.</p>
+      <p class="eyebrow">Eroeffnungsrede - Analyse & Feedback</p>
+      <h1>Reden-Beurteilungsroboter</h1>
+      <p class="lead">Lade dein Video hoch. Die Beurteilung erfolgt automatisch durch die App und optional durch KI.</p>
       <div class="hero-meta">
         <span>Offline‑first</span>
         <span>Datenschutzfreundlich</span>
@@ -38,12 +38,7 @@
   <main>
     <section class="grid two">
       <div class="card">
-        <h2>2. Kriterienraster</h2>
-        <p>Bewerte dich selbst pro Kriterium. Der Roboter ergänzt danach die Tipps.</p>
-        <div id="rubric"></div>
-      </div>
-      <div class="card">
-        <h2>3. Videoanalyse & Score</h2>
+        <h2>2. Videoanalyse & Score</h2>
         <div class="scoreboard">
           <div>
             <div class="label">Gesamtpunkte</div>
@@ -91,14 +86,14 @@
     </section>
 
     <section class="card feedback">
-      <h2>4. Lernfoerderliches Feedback</h2>
+      <h2>3. Lernfoerderliches Feedback</h2>
       <div id="feedback">
         <p>Starte die Analyse, um Feedback zu erhalten.</p>
       </div>
     </section>
 
     <section class="card ai">
-      <h2>5. KI-Feedback (optional)</h2>
+      <h2>4. KI-Feedback (optional)</h2>
       <p>Fuer diese Funktion wird ein OpenAI-API-Key auf dem Server benoetigt. Die API bekommt Analysewerte und Video-Keyframes.</p>
       <div class="actions">
         <button id="aiBtn" class="primary">KI schaut Video (Keyframes) an</button>
@@ -110,9 +105,9 @@
     <section class="card tips">
       <h2>So funktioniert die Bewertung</h2>
       <ul>
-        <li>Die Kriterien folgen dem Raster für Eröffnungsreden: Inhalt, Form (Text) und Form (Auftritt).</li>
-        <li>Die Punkte basieren auf Videoanalyse und optional deiner Selbsteinschaetzung.</li>
-        <li>Der Roboter ergänzt gezielte Lern‑Tipps, die zu deinen Schwachstellen passen.</li>
+        <li>Die App analysiert Dauer, Audio-Rhythmus, Bewegung und optional Blickkontakt im Video.</li>
+        <li>Die Bewertung erfolgt automatisch aus diesen Messwerten.</li>
+        <li>Optional kann KI mit Video-Keyframes zusaetzliches Feedback geben.</li>
       </ul>
     </section>
   </main>
@@ -121,6 +116,6 @@
     <p>Bereit für GitHub: Dieses Projekt besteht aus statischen Dateien und einem kleinen Express‑Server.</p>
   </footer>
 
-  <script src="/app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
