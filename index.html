@@ -3,45 +3,127 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Rhetorik & Logik – Start</title>
-  <meta http-equiv="refresh" content="0; url=public/index.html" />
-  <style>
-    body{
-      font-family:system-ui,-apple-system,Segoe UI,Roboto;
-      padding:24px;
-      background:#f5f7fb;
-      color:#0b1324;
-    }
-    .wrap{
-      max-width:680px;
-      margin:40px auto;
-      background:#fff;
-      padding:28px;
-      border-radius:18px;
-      box-shadow:0 12px 28px rgba(0,0,0,0.12);
-    }
-    a{color:#0b62d6; font-weight:600;}
-    .start-btn{
-      display:inline-block;
-      background:#ffb703;
-      color:#1c1400;
-      padding:16px 24px;
-      border-radius:14px;
-      font-weight:800;
-      text-decoration:none;
-      font-size:1.1rem;
-      letter-spacing:0.4px;
-      box-shadow:0 10px 20px rgba(0,0,0,0.18);
-    }
-    .hint{margin-top:16px; color:#445069;}
-  </style>
+  <title>Reden‑Beurteilungsroboter – Eröffnungsrede</title>
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="wrap">
-    <h1>Rhetorik & Logik – Memory + Tabu</h1>
-    <p>Starte das Spiel direkt im Browser:</p>
-    <p><a class="start-btn" href="public/index.html">Spiel starten</a></p>
-    <p class="hint">Für lokalen Mehrspieler bitte den Server starten und dann <code>http://localhost:3000</code> öffnen.</p>
+  <div class="hero">
+    <header>
+      <p class="eyebrow">Eröffnungsrede · Analyse & Feedback</p>
+      <h1>Reden‑Beurteilungsroboter</h1>
+      <p class="lead">Lade dein Video hoch, transkribiere deine Rede, bewerte dich entlang der Kriterien und erhalte lernförderliche Tipps.</p>
+      <div class="hero-meta">
+        <span>Offline‑first</span>
+        <span>Datenschutzfreundlich</span>
+        <span>Für 2–3 Minuten</span>
+      </div>
+    </header>
+    <section class="upload-panel">
+      <div class="card">
+        <h2>1. Video hochladen</h2>
+        <p>Die lokale Analyse startet automatisch nach dem Upload. Video wird nicht hochgeladen.</p>
+        <input id="videoInput" type="file" accept="video/*" />
+        <div class="video-wrap">
+          <video id="videoPreview" controls playsinline></video>
+        </div>
+        <div class="meta" id="videoMeta">Noch kein Video geladen.</div>
+        <div class="meta" id="analysisStatus">Warte auf Video.</div>
+      </div>
+      <div class="card">
+        <h2>2. Transkript (optional)</h2>
+        <p>Nur optional für KI-Feedback. Die Kernanalyse basiert auf dem Video/Auftritt.</p>
+        <textarea id="transcript" rows="10" placeholder="Füge hier das Transkript deiner Rede ein …"></textarea>
+        <div class="meta" id="transcriptMeta">Wörter: 0 · Tempo: –</div>
+      </div>
+    </section>
   </div>
+
+  <main>
+    <section class="grid two">
+      <div class="card">
+        <h2>3. Kriterienraster</h2>
+        <p>Bewerte dich selbst pro Kriterium. Der Roboter ergänzt danach die Tipps.</p>
+        <div id="rubric"></div>
+      </div>
+      <div class="card">
+        <h2>4. Videoanalyse & Score</h2>
+        <div class="scoreboard">
+          <div>
+            <div class="label">Gesamtpunkte</div>
+            <div class="value" id="totalScore">0.0</div>
+            <div class="hint" id="scoreHint">Maximal 5 Punkte (gewichtete Teilbereiche).</div>
+          </div>
+          <div>
+            <div class="label">Zeit</div>
+            <div class="value" id="timeScore">–</div>
+            <div class="hint" id="timeHint">Idealer Umfang: 2–3 Minuten.</div>
+          </div>
+          <div>
+            <div class="label">Sprechtempo</div>
+            <div class="value" id="tempoScore">–</div>
+            <div class="hint">Geschätzt aus Audio-Rhythmus.</div>
+          </div>
+          <div>
+            <div class="label">Pausenanteil</div>
+            <div class="value" id="pauseScore">–</div>
+            <div class="hint">Aus Audio automatisch erkannt.</div>
+          </div>
+        </div>
+        <div class="scoreboard cv-board">
+          <div>
+            <div class="label">Blickkontakt (Proxy)</div>
+            <div class="value" id="eyeScore">–</div>
+            <div class="hint">Wenn Browser Face-Detection unterstützt.</div>
+          </div>
+          <div>
+            <div class="label">Bewegungsenergie</div>
+            <div class="value" id="gestureScore">–</div>
+            <div class="hint">Veränderung zwischen Videoframes.</div>
+          </div>
+          <div>
+            <div class="label">Gesicht erkannt</div>
+            <div class="value" id="faceScore">–</div>
+            <div class="hint">Anteil der Frames mit Gesicht.</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="analyzeBtn" class="primary">Video erneut analysieren</button>
+          <button id="downloadBtn" class="ghost">Bericht herunterladen</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card feedback">
+      <h2>5. Lernförderliches Feedback</h2>
+      <div id="feedback">
+        <p>Starte die Analyse, um Feedback zu erhalten.</p>
+      </div>
+    </section>
+
+    <section class="card ai">
+      <h2>6. KI-Feedback (optional)</h2>
+      <p>Für diese Funktion wird ein OpenAI‑API‑Key auf dem Server benötigt. Die API bekommt Analysewerte, Keyframes und optional das Transkript.</p>
+      <div class="actions">
+        <button id="aiBtn" class="primary">KI schaut Video (Keyframes) an</button>
+      </div>
+      <div class="meta" id="aiStatus">Noch keine KI‑Analyse.</div>
+      <div id="aiFeedback"></div>
+    </section>
+
+    <section class="card tips">
+      <h2>So funktioniert die Bewertung</h2>
+      <ul>
+        <li>Die Kriterien folgen dem Raster für Eröffnungsreden: Inhalt, Form (Text) und Form (Auftritt).</li>
+        <li>Die Punkte basieren auf deiner Selbsteinschätzung und einfachen Messwerten (Zeit, Tempo).</li>
+        <li>Der Roboter ergänzt gezielte Lern‑Tipps, die zu deinen Schwachstellen passen.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>Bereit für GitHub: Dieses Projekt besteht aus statischen Dateien und einem kleinen Express‑Server.</p>
+  </footer>
+
+  <script src="/app.js"></script>
 </body>
 </html>
