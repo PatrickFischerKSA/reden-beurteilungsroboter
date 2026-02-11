@@ -146,11 +146,20 @@ server.listen(PORT, () => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'reden-beurteilungsroboter-api' });
+  const headerKey = _req.headers['x-openai-api-key'];
+  const keyConfigured = Boolean(headerKey || process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_DEFAULT);
+  res.json({
+    ok: true,
+    service: 'reden-beurteilungsroboter-api',
+    keyConfigured,
+    keySource: headerKey ? 'client-header' : (process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_DEFAULT ? 'server-env' : 'none'),
+    model: process.env.OPENAI_MODEL || 'gpt-4.1',
+    transcribeModel: process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe'
+  });
 });
 
 app.post('/api/ai-feedback', async (req, res) => {
-  const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_DEFAULT;
+  const apiKey = req.headers['x-openai-api-key'] || process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_DEFAULT;
   const model = process.env.OPENAI_MODEL || 'gpt-4.1';
 
   if (!apiKey) {
@@ -269,7 +278,7 @@ Antworte als JSON mit:
 });
 
 app.post('/api/transcribe-audio', async (req, res) => {
-  const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_DEFAULT;
+  const apiKey = req.headers['x-openai-api-key'] || process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_DEFAULT;
   const model = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
 
   if (!apiKey) {
