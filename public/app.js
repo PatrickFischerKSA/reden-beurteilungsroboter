@@ -51,8 +51,7 @@ const videoInput = document.getElementById('videoInput');
 const videoPreview = document.getElementById('videoPreview');
 const videoMeta = document.getElementById('videoMeta');
 const analysisStatus = document.getElementById('analysisStatus');
-const transcript = document.getElementById('transcript');
-const transcriptMeta = document.getElementById('transcriptMeta');
+const featureStatus = document.getElementById('featureStatus');
 const analyzeBtn = document.getElementById('analyzeBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const aiBtn = document.getElementById('aiBtn');
@@ -73,6 +72,13 @@ let currentVideoFile = null;
 let audioMetrics = null;
 let visualMetrics = null;
 let lastAnalysis = null;
+
+function setFeatureStatus(opts = {}) {
+  const face = opts.face || ('FaceDetector' in window ? 'aktiv' : 'nicht verfuegbar');
+  const audio = opts.audio || 'bereit';
+  const frames = opts.frames || 'bereit';
+  featureStatus.textContent = `FaceDetector: ${face} · Audioanalyse: ${audio} · Keyframes: ${frames}`;
+}
 
 function renderRubric() {
   rubricRoot.innerHTML = '';
@@ -112,10 +118,6 @@ function renderRubric() {
   });
 }
 
-function wordCount(text) {
-  return text.trim().split(/\s+/).filter(Boolean).length;
-}
-
 function formatTime(seconds) {
   if (!seconds || !Number.isFinite(seconds)) return '-';
   const m = Math.floor(seconds / 60);
@@ -126,11 +128,6 @@ function formatTime(seconds) {
 function getVideoDuration() {
   if (Number.isFinite(videoPreview.duration)) return videoPreview.duration;
   return 0;
-}
-
-function updateTranscriptMeta() {
-  const words = wordCount(transcript.value);
-  transcriptMeta.textContent = `Woerter: ${words} · optional fuer KI-Feedback`;
 }
 
 function seekTo(time) {
@@ -477,12 +474,27 @@ async function runLocalAnalysis() {
   analyzeBtn.disabled = true;
   analyzeBtn.textContent = 'Analyse laeuft...';
   analysisStatus.textContent = 'Audioanalyse laeuft...';
+  setFeatureStatus({
+    face: 'in Pruefung',
+    audio: 'laeuft',
+    frames: 'wartet'
+  });
 
   audioMetrics = await analyzeAudio(currentVideoFile);
+  setFeatureStatus({
+    face: 'in Pruefung',
+    audio: audioMetrics ? 'ok' : 'nicht verfuegbar',
+    frames: 'laeuft'
+  });
 
   analysisStatus.textContent = 'Video wird ausgewertet...';
   visualMetrics = await analyzeVideoFrames((step, total) => {
     analysisStatus.textContent = `Videoanalyse: ${step}/${total} Frames`;
+  });
+  setFeatureStatus({
+    face: visualMetrics && visualMetrics.detectorAvailable ? 'aktiv' : 'nicht verfuegbar',
+    audio: audioMetrics ? 'ok' : 'nicht verfuegbar',
+    frames: visualMetrics ? `ok (${visualMetrics.keyframes.length} Keyframes)` : 'nicht verfuegbar'
   });
 
   const duration = getVideoDuration();
@@ -509,8 +521,7 @@ async function runLocalAnalysis() {
     visual: visualMetrics,
     rubric,
     feedback,
-    score: totalScore,
-    transcript: transcript.value.trim()
+    score: totalScore
   };
 
   analyzeBtn.disabled = false;
@@ -518,7 +529,7 @@ async function runLocalAnalysis() {
 }
 
 renderRubric();
-updateTranscriptMeta();
+setFeatureStatus();
 
 videoInput.addEventListener('change', async (event) => {
   const file = event.target.files[0];
@@ -535,8 +546,6 @@ videoInput.addEventListener('change', async (event) => {
     await runLocalAnalysis();
   };
 });
-
-transcript.addEventListener('input', updateTranscriptMeta);
 analyzeBtn.addEventListener('click', runLocalAnalysis);
 
 downloadBtn.addEventListener('click', () => {
@@ -570,7 +579,6 @@ aiBtn.addEventListener('click', async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        transcript: transcript.value.trim(),
         metrics: {
           duration: lastAnalysis.duration,
           pauseRatio: lastAnalysis.audio ? lastAnalysis.audio.silentRatio : null,
