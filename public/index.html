@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reden‑Beurteilungsroboter – Eröffnungsrede</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="hero">
+    <header>
+      <p class="eyebrow">Eröffnungsrede · Analyse & Feedback</p>
+      <h1>Reden‑Beurteilungsroboter</h1>
+      <p class="lead">Lade dein Video hoch, transkribiere deine Rede, bewerte dich entlang der Kriterien und erhalte lernförderliche Tipps.</p>
+      <div class="hero-meta">
+        <span>Offline‑first</span>
+        <span>Datenschutzfreundlich</span>
+        <span>Für 2–3 Minuten</span>
+      </div>
+    </header>
+    <section class="upload-panel">
+      <div class="card">
+        <h2>1. Video hochladen</h2>
+        <p>Das Video bleibt lokal in deinem Browser. Es wird nichts hochgeladen.</p>
+        <input id="videoInput" type="file" accept="video/*" />
+        <div class="video-wrap">
+          <video id="videoPreview" controls></video>
+        </div>
+        <label class="toggle">
+          <input id="cvToggle" type="checkbox" />
+          <span>Videoanalyse (Blickkontakt & Gestik) aktivieren</span>
+        </label>
+        <div class="meta" id="videoMeta">Noch kein Video geladen.</div>
+        <div class="meta" id="cvStatus">Videoanalyse aus.</div>
+      </div>
+      <div class="card">
+        <h2>2. Transkript hinzufügen</h2>
+        <p>Nutze z. B. deine eigene Mitschrift oder eine Transkription aus dem Smartphone.</p>
+        <textarea id="transcript" rows="10" placeholder="Füge hier das Transkript deiner Rede ein …"></textarea>
+        <div class="meta" id="transcriptMeta">Wörter: 0 · Tempo: –</div>
+      </div>
+    </section>
+  </div>
+
+  <main>
+    <section class="grid two">
+      <div class="card">
+        <h2>3. Kriterienraster</h2>
+        <p>Bewerte dich selbst pro Kriterium. Der Roboter ergänzt danach die Tipps.</p>
+        <div id="rubric"></div>
+      </div>
+      <div class="card">
+        <h2>4. Analyse & Score</h2>
+        <div class="scoreboard">
+          <div>
+            <div class="label">Gesamtpunkte</div>
+            <div class="value" id="totalScore">0.0</div>
+            <div class="hint" id="scoreHint">Maximal 5 Punkte (gewichtete Teilbereiche).</div>
+          </div>
+          <div>
+            <div class="label">Zeit</div>
+            <div class="value" id="timeScore">–</div>
+            <div class="hint" id="timeHint">Idealer Umfang: 2–3 Minuten.</div>
+          </div>
+          <div>
+            <div class="label">Sprechtempo</div>
+            <div class="value" id="tempoScore">–</div>
+            <div class="hint">Orientierung: 110–150 Wörter/Min.</div>
+          </div>
+          <div>
+            <div class="label">Pausenanteil</div>
+            <div class="value" id="pauseScore">–</div>
+            <div class="hint">Optional (falls Audioanalyse möglich).</div>
+          </div>
+        </div>
+        <div class="scoreboard cv-board">
+          <div>
+            <div class="label">Blickkontakt (Proxy)</div>
+            <div class="value" id="eyeScore">–</div>
+            <div class="hint">Anteil der Frames mit Gesicht zentriert.</div>
+          </div>
+          <div>
+            <div class="label">Gestik (Bewegung)</div>
+            <div class="value" id="gestureScore">–</div>
+            <div class="hint">Bewegung der Hände pro Sekunde.</div>
+          </div>
+          <div>
+            <div class="label">Gesicht erkannt</div>
+            <div class="value" id="faceScore">–</div>
+            <div class="hint">Anteil der Frames mit Gesicht.</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="analyzeBtn" class="primary">Analyse starten</button>
+          <button id="downloadBtn" class="ghost">Bericht herunterladen</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card feedback">
+      <h2>5. Lernförderliches Feedback</h2>
+      <div id="feedback">
+        <p>Starte die Analyse, um Feedback zu erhalten.</p>
+      </div>
+    </section>
+
+    <section class="card ai">
+      <h2>6. KI-Feedback (optional)</h2>
+      <p>Für diese Funktion wird ein OpenAI‑API‑Key auf dem Server benötigt. Das Transkript wird an die API gesendet.</p>
+      <div class="actions">
+        <button id="aiBtn" class="primary">KI‑Feedback generieren</button>
+      </div>
+      <div class="meta" id="aiStatus">Noch keine KI‑Analyse.</div>
+      <div id="aiFeedback"></div>
+    </section>
+
+    <section class="card tips">
+      <h2>So funktioniert die Bewertung</h2>
+      <ul>
+        <li>Die Kriterien folgen dem Raster für Eröffnungsreden: Inhalt, Form (Text) und Form (Auftritt).</li>
+        <li>Die Punkte basieren auf deiner Selbsteinschätzung und einfachen Messwerten (Zeit, Tempo).</li>
+        <li>Der Roboter ergänzt gezielte Lern‑Tipps, die zu deinen Schwachstellen passen.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>Bereit für GitHub: Dieses Projekt besteht aus statischen Dateien und einem kleinen Express‑Server.</p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
