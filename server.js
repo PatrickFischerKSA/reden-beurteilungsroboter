@@ -5,7 +5,7 @@ const WebSocket = require('ws');
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '12mb' }));
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -120,14 +120,17 @@ app.post('/api/ai-feedback', async (req, res) => {
     return res.status(400).json({ error: 'OPENAI_API_KEY fehlt.' });
   }
 
-  const { transcript, scores, metrics, cvMetrics } = req.body || {};
-  if (!transcript || typeof transcript !== 'string') {
-    return res.status(400).json({ error: 'Transkript fehlt.' });
+  const { transcript, scores, metrics, videoFrames } = req.body || {};
+  if (
+    (!transcript || typeof transcript !== 'string' || transcript.trim().length === 0) &&
+    (!Array.isArray(videoFrames) || videoFrames.length === 0)
+  ) {
+    return res.status(400).json({ error: 'Es braucht mindestens Transkript oder Video-Keyframes.' });
   }
 
-  const prompt = `
+  const promptText = `
 Du bist ein deutschsprachiger Rhetorik-Coach.
-Bewerte eine Eröffnungsrede lernförderlich und konstruktiv.
+Bewerte eine Eröffnungsrede lernfoerderlich und konstruktiv.
 Gib konkrete, umsetzbare Tipps ohne zu beurteilen, ob der Inhalt wahr ist.
 
 Kriterienraster (vereinfacht):
@@ -138,14 +141,11 @@ Kriterienraster (vereinfacht):
 Messwerte:
 ${JSON.stringify(metrics || {}, null, 2)}
 
-CV-Hinweise (optional, heuristisch):
-${JSON.stringify(cvMetrics || {}, null, 2)}
-
 Selbsteinschätzung:
 ${JSON.stringify(scores || {}, null, 2)}
 
-Transkript:
-${transcript}
+Transkript (optional):
+${transcript || '(nicht vorhanden)'}
 
 Antworte als JSON mit:
 {
@@ -158,6 +158,26 @@ Antworte als JSON mit:
 `.trim();
 
   try {
+    const content = [
+      { type: 'input_text', text: promptText }
+    ];
+
+    if (Array.isArray(videoFrames)) {
+      const selectedFrames = videoFrames.slice(0, 6);
+      selectedFrames.forEach((frame, idx) => {
+        if (frame && typeof frame.dataUrl === 'string' && frame.dataUrl.startsWith('data:image/')) {
+          content.push({
+            type: 'input_text',
+            text: `Keyframe ${idx + 1} bei ca. ${frame.timeSec || 0} Sekunden`
+          });
+          content.push({
+            type: 'input_image',
+            image_url: frame.dataUrl
+          });
+        }
+      });
+    }
+
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
@@ -169,9 +189,7 @@ Antworte als JSON mit:
         input: [
           {
             role: 'user',
-            content: [
-              { type: 'input_text', text: prompt }
-            ]
+            content
           }
         ],
         max_output_tokens: 600
