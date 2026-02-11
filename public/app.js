@@ -35,6 +35,7 @@ let metadataLoaded = false;
 let detectorMode = 'none';
 let nativeFaceDetector = null;
 let mediaPipeFaceDetector = null;
+let mediaPipeRuntime = null;
 let apiBaseInUse = '';
 let lastErrorMessage = '';
 
@@ -271,6 +272,9 @@ function tempoLabel(audio) {
 }
 
 async function initFaceEngine() {
+  detectorMode = 'initialisiere';
+  updateDebugBox({ lastError: '' });
+
   if (window.FaceDetector) {
     try {
       const candidate = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
@@ -284,29 +288,75 @@ async function initFaceEngine() {
     }
   }
 
-  if (!window.FilesetResolver || !window.FaceDetector || typeof window.FaceDetector.createFromOptions !== 'function') {
-    detectorMode = 'nicht verfuegbar';
-    return;
-  }
-
-  try {
-    const vision = await window.FilesetResolver.forVisionTasks(
+  async function initWithRuntime(runtime) {
+    const vision = await runtime.FilesetResolver.forVisionTasks(
       'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
     );
 
-    mediaPipeFaceDetector = await window.FaceDetector.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath:
-          'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range_sparse/float16/1/blaze_face_full_range_sparse.tflite'
-      },
-      runningMode: 'IMAGE',
-      minDetectionConfidence: 0.30
-    });
+    const modelUrls = [
+      'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+      'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite'
+    ];
 
+    let lastModelErr = null;
+    for (const modelAssetPath of modelUrls) {
+      try {
+        mediaPipeFaceDetector = await runtime.FaceDetector.createFromOptions(vision, {
+          baseOptions: { modelAssetPath },
+          runningMode: 'IMAGE',
+          minDetectionConfidence: 0.30
+        });
+        lastModelErr = null;
+        break;
+      } catch (err) {
+        lastModelErr = err;
+      }
+    }
+
+    if (!mediaPipeFaceDetector) {
+      throw lastModelErr || new Error('Kein Face-Model ladbar');
+    }
+
+    mediaPipeRuntime = runtime;
     detectorMode = 'mediapipe';
-  } catch (_err) {
+  }
+
+  try {
+    // 1) Try globals from preloaded script
+    if (
+      window.FilesetResolver &&
+      window.FaceDetector &&
+      typeof window.FaceDetector.createFromOptions === 'function'
+    ) {
+      await initWithRuntime({
+        FilesetResolver: window.FilesetResolver,
+        FaceDetector: window.FaceDetector
+      });
+      return;
+    }
+
+    // 2) Fallback: dynamic ESM import to avoid name collisions with native FaceDetector
+    const mod = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14');
+    if (
+      mod &&
+      mod.FilesetResolver &&
+      mod.FaceDetector &&
+      typeof mod.FaceDetector.createFromOptions === 'function'
+    ) {
+      await initWithRuntime({
+        FilesetResolver: mod.FilesetResolver,
+        FaceDetector: mod.FaceDetector
+      });
+      return;
+    }
+
+    detectorMode = 'nicht verfuegbar';
+    updateDebugBox({ lastError: 'Keine nutzbare Face-Engine gefunden.' });
+  } catch (err) {
     detectorMode = 'nicht verfuegbar';
     mediaPipeFaceDetector = null;
+    mediaPipeRuntime = null;
+    updateDebugBox({ lastError: `Face-Init fehlgeschlagen: ${err.message || 'unbekannt'}` });
   }
 }
 
