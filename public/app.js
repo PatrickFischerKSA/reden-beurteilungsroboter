@@ -8,6 +8,9 @@ const downloadBtn = document.getElementById('downloadBtn');
 const aiBtn = document.getElementById('aiBtn');
 const aiStatus = document.getElementById('aiStatus');
 const aiFeedback = document.getElementById('aiFeedback');
+const apiKeyInput = document.getElementById('apiKeyInput');
+const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
+const testApiBtn = document.getElementById('testApiBtn');
 
 const totalScoreEl = document.getElementById('totalScore');
 const timeScoreEl = document.getElementById('timeScore');
@@ -18,6 +21,13 @@ const gestureScoreEl = document.getElementById('gestureScore');
 const faceScoreEl = document.getElementById('faceScore');
 const timeHintEl = document.getElementById('timeHint');
 const feedbackEl = document.getElementById('feedback');
+const dbgApiHealth = document.getElementById('dbgApiHealth');
+const dbgApiUrl = document.getElementById('dbgApiUrl');
+const dbgKeySource = document.getElementById('dbgKeySource');
+const dbgFaceEngine = document.getElementById('dbgFaceEngine');
+const dbgFrames = document.getElementById('dbgFrames');
+const dbgFaces = document.getElementById('dbgFaces');
+const dbgLastError = document.getElementById('dbgLastError');
 
 let currentVideoFile = null;
 let audioMetrics = null;
@@ -27,16 +37,54 @@ let metadataLoaded = false;
 let detectorMode = 'none';
 let nativeFaceDetector = null;
 let mediaPipeFaceDetector = null;
+let apiBaseInUse = '';
+let lastErrorMessage = '';
+
+function loadClientApiKey() {
+  try {
+    return localStorage.getItem('openai_api_key_local') || '';
+  } catch (_err) {
+    return '';
+  }
+}
+
+function saveClientApiKey(key) {
+  try {
+    localStorage.setItem('openai_api_key_local', key);
+  } catch (_err) {
+  }
+}
+
+function maskKey(key) {
+  if (!key) return '-';
+  if (key.length < 8) return 'gesetzt';
+  return `${key.slice(0, 4)}...${key.slice(-4)}`;
+}
+
+function updateDebugBox(extra = {}) {
+  if (extra.lastError !== undefined) {
+    lastErrorMessage = extra.lastError || '';
+  }
+  dbgApiHealth.textContent = extra.apiHealth || dbgApiHealth.textContent || '-';
+  dbgApiUrl.textContent = apiBaseInUse || '-';
+  dbgKeySource.textContent = extra.keySource || dbgKeySource.textContent || '-';
+  dbgFaceEngine.textContent = detectorMode || '-';
+  dbgFrames.textContent = extra.frames || dbgFrames.textContent || '-';
+  dbgFaces.textContent = extra.faces || dbgFaces.textContent || '-';
+  dbgLastError.textContent = lastErrorMessage || '-';
+}
 
 function getApiBaseCandidates() {
   const candidates = [];
   const origin = window.location.origin;
-  if (origin && origin !== 'null') candidates.push(origin);
-  if (!origin.includes('localhost:3000')) candidates.push('http://localhost:3000');
+  if (origin && origin !== 'null' && origin.startsWith('http')) candidates.push(origin);
+  candidates.push('http://localhost:3000');
+  candidates.push('http://127.0.0.1:3000');
   return [...new Set(candidates)];
 }
 
 async function postJsonWithFallback(path, payload) {
+  const clientKey = loadClientApiKey();
   const bases = getApiBaseCandidates();
   let lastError = null;
 
@@ -45,28 +93,69 @@ async function postJsonWithFallback(path, payload) {
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(clientKey ? { 'x-openai-api-key': clientKey } : {})
+        },
         body: JSON.stringify(payload)
       });
 
       const parsed = await safeJsonResponse(response);
       if (response.ok && parsed.data) {
+        apiBaseInUse = base;
+        updateDebugBox({ keySource: clientKey ? `client (${maskKey(clientKey)})` : 'server-env' });
         return { ok: true, payload: parsed.data, url };
       }
 
       if (response.status === 404 || response.status === 405) {
         lastError = `API an ${url} nicht verfuegbar (${response.status}).`;
+        updateDebugBox({ lastError });
         continue;
       }
 
       const msg = parsed.data?.error || parsed.raw?.slice(0, 200) || `HTTP ${response.status}`;
+      updateDebugBox({ lastError: `${url}: ${msg}` });
       return { ok: false, error: `${url}: ${msg}`, url };
     } catch (err) {
-      lastError = `${url}: ${err.message}`;
+      const baseMsg = err && err.message ? err.message : 'Netzwerkfehler';
+      if (String(baseMsg).includes('Failed to fetch')) {
+        lastError = `${url}: Server nicht erreichbar. Starte die App mit npm start und oeffne http://localhost:3000`;
+      } else {
+        lastError = `${url}: ${baseMsg}`;
+      }
+      updateDebugBox({ lastError });
     }
   }
 
   return { ok: false, error: lastError || 'Keine API erreichbar.' };
+}
+
+async function getJsonWithFallback(path) {
+  const clientKey = loadClientApiKey();
+  const bases = getApiBaseCandidates();
+  let lastError = null;
+
+  for (const base of bases) {
+    const url = `${base}${path}`;
+    try {
+      const response = await fetch(url, {
+        headers: clientKey ? { 'x-openai-api-key': clientKey } : {}
+      });
+      const parsed = await safeJsonResponse(response);
+      if (response.ok && parsed.data) {
+        apiBaseInUse = base;
+        return { ok: true, payload: parsed.data, url };
+      }
+      const msg = parsed.data?.error || parsed.raw?.slice(0, 120) || `HTTP ${response.status}`;
+      lastError = `${url}: ${msg}`;
+    } catch (err) {
+      const baseMsg = err && err.message ? err.message : 'Netzwerkfehler';
+      lastError = `${url}: ${baseMsg}`;
+      updateDebugBox({ lastError });
+    }
+  }
+
+  return { ok: false, error: lastError || 'Healthcheck fehlgeschlagen.' };
 }
 
 function setFeatureStatus(opts = {}) {
@@ -239,10 +328,10 @@ async function initFaceEngine() {
     mediaPipeFaceDetector = await window.FaceDetector.createFromOptions(vision, {
       baseOptions: {
         modelAssetPath:
-          'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite'
+          'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range_sparse/float16/1/blaze_face_full_range_sparse.tflite'
       },
       runningMode: 'IMAGE',
-      minDetectionConfidence: 0.45
+      minDetectionConfidence: 0.30
     });
 
     detectorMode = 'mediapipe';
@@ -293,8 +382,10 @@ async function analyzeVideoFrames(onProgress) {
   const duration = getVideoDuration();
   if (!duration) return null;
 
-  const width = 224;
-  const height = 126;
+  const sourceW = videoPreview.videoWidth || 640;
+  const sourceH = videoPreview.videoHeight || 360;
+  const width = Math.min(640, sourceW);
+  const height = Math.max(180, Math.round((width / sourceW) * sourceH));
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -367,7 +458,8 @@ async function analyzeVideoFrames(onProgress) {
     meanFaceArea,
     keyframes,
     sampleCount,
-    detectorAvailable: detectorMode === 'native' || detectorMode === 'mediapipe'
+    detectorAvailable: detectorMode === 'native' || detectorMode === 'mediapipe',
+    faceDetectedFrames: faceDetected
   };
 }
 
@@ -565,6 +657,10 @@ async function runLocalAnalysis() {
   updateScoreboard({ duration, audio: audioMetrics, visual: visualMetrics });
   feedbackEl.innerHTML = `<ul>${feedback.map((tip) => `<li>${tip}</li>`).join('')}</ul>`;
   analysisStatus.textContent = 'Analyse abgeschlossen.';
+  updateDebugBox({
+    frames: visualMetrics ? String(visualMetrics.sampleCount) : '-',
+    faces: visualMetrics ? `${visualMetrics.faceDetectedFrames}/${visualMetrics.sampleCount}` : '-'
+  });
 
   lastAnalysis = {
     duration,
@@ -605,6 +701,23 @@ async function getAutoTranscript() {
 async function init() {
   if (window.location.protocol === 'file:') {
     analysisStatus.textContent = 'Hinweis: KI-Funktionen brauchen den Server (npm start, dann localhost:3000).';
+  }
+
+  const health = await getJsonWithFallback('/api/health');
+  if (!health.ok) {
+    aiStatus.textContent = `API nicht erreichbar: ${health.error}`;
+    updateDebugBox({ apiHealth: 'nicht erreichbar', lastError: health.error, keySource: loadClientApiKey() ? `client (${maskKey(loadClientApiKey())})` : 'server-env' });
+  } else if (!health.payload.keyConfigured) {
+    if (loadClientApiKey()) {
+      aiStatus.textContent = 'API erreichbar. Client-Key aktiv.';
+      updateDebugBox({ apiHealth: 'ok', keySource: `client (${maskKey(loadClientApiKey())})` });
+    } else {
+      aiStatus.textContent = 'API erreichbar, aber kein OPENAI_API_KEY konfiguriert.';
+      updateDebugBox({ apiHealth: 'ok', keySource: 'kein key' });
+    }
+  } else {
+    aiStatus.textContent = `API ok (${health.payload.model}).`;
+    updateDebugBox({ apiHealth: 'ok', keySource: 'server-env' });
   }
 
   analysisStatus.textContent = 'Initialisiere Gesichtserkennung...';
@@ -710,4 +823,33 @@ init().catch(() => {
   detectorMode = 'nicht verfuegbar';
   setFeatureStatus({ face: detectorMode });
   analysisStatus.textContent = 'Warte auf Video.';
+  updateDebugBox({ lastError: 'Initialisierung fehlgeschlagen' });
 });
+
+saveApiKeyBtn.addEventListener('click', async () => {
+  const key = (apiKeyInput.value || '').trim();
+  if (!key) {
+    aiStatus.textContent = 'Bitte zuerst einen API-Key eingeben.';
+    return;
+  }
+  saveClientApiKey(key);
+  aiStatus.textContent = 'Client-API-Key gespeichert.';
+  updateDebugBox({ keySource: `client (${maskKey(key)})` });
+});
+
+testApiBtn.addEventListener('click', async () => {
+  aiStatus.textContent = 'Teste API-Verbindung...';
+  const health = await getJsonWithFallback('/api/health');
+  if (!health.ok) {
+    aiStatus.textContent = `API-Test fehlgeschlagen: ${health.error}`;
+    updateDebugBox({ apiHealth: 'fehler', lastError: health.error });
+    return;
+  }
+  aiStatus.textContent = `API-Test ok (${health.url}).`;
+  updateDebugBox({
+    apiHealth: 'ok',
+    keySource: loadClientApiKey() ? `client (${maskKey(loadClientApiKey())})` : (health.payload.keyConfigured ? 'server-env' : 'kein key')
+  });
+});
+
+apiKeyInput.value = loadClientApiKey();

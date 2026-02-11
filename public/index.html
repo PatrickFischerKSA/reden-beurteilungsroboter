@@ -110,6 +110,25 @@
         <li>Optional kann KI mit Video-Keyframes zusaetzliches Feedback geben.</li>
       </ul>
     </section>
+
+    <section class="card debug-card">
+      <h2>Debug Box</h2>
+      <p>Live-Diagnose fuer API-Key, Server-Verbindung und Gesichtserkennung.</p>
+      <div class="debug-grid">
+        <div><span>API-Health:</span> <code id="dbgApiHealth">-</code></div>
+        <div><span>API-URL:</span> <code id="dbgApiUrl">-</code></div>
+        <div><span>Key-Quelle:</span> <code id="dbgKeySource">-</code></div>
+        <div><span>Face-Engine:</span> <code id="dbgFaceEngine">-</code></div>
+        <div><span>Frames:</span> <code id="dbgFrames">-</code></div>
+        <div><span>Faces erkannt:</span> <code id="dbgFaces">-</code></div>
+        <div><span>Letzter Fehler:</span> <code id="dbgLastError">-</code></div>
+      </div>
+      <div class="actions">
+        <input id="apiKeyInput" type="password" placeholder="OpenAI API Key (optional lokal speichern)" />
+        <button id="saveApiKeyBtn" class="ghost">Key speichern</button>
+        <button id="testApiBtn" class="ghost">API testen</button>
+      </div>
+    </section>
   </main>
 
   <footer>
