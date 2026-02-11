@@ -5,7 +5,7 @@ const WebSocket = require('ws');
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json({ limit: '12mb' }));
+app.use(express.json({ limit: '35mb' }));
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -150,7 +150,9 @@ ${transcript || '(nicht vorhanden)'}
 
 Antworte als JSON mit:
 {
-  "summary": "2-3 Sätze",
+  "summary": "2-3 Saetze",
+  "rhetorical_feedback": ["mind. 4 konkrete Beobachtungen zum Auftritt"],
+  "content_feedback": ["mind. 4 konkrete Beobachtungen zu Argumentstruktur und inhaltlicher Klarheit"],
   "strengths": ["..."],
   "improvements": ["..."],
   "tips": ["..."],
@@ -212,10 +214,58 @@ Antworte als JSON mit:
     try {
       parsed = JSON.parse(outputText);
     } catch {
-      parsed = { summary: outputText, strengths: [], improvements: [], tips: [], next_steps: [] };
+      parsed = {
+        summary: outputText,
+        rhetorical_feedback: [],
+        content_feedback: [],
+        strengths: [],
+        improvements: [],
+        tips: [],
+        next_steps: []
+      };
     }
 
     return res.json({ ok: true, data: parsed });
+  } catch (err) {
+    return res.status(500).json({ error: 'Serverfehler', details: err.message });
+  }
+});
+
+app.post('/api/transcribe-audio', async (req, res) => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const model = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
+
+  if (!apiKey) {
+    return res.status(400).json({ error: 'OPENAI_API_KEY fehlt.' });
+  }
+
+  const { audioBase64, language } = req.body || {};
+  if (!audioBase64 || typeof audioBase64 !== 'string') {
+    return res.status(400).json({ error: 'audioBase64 fehlt.' });
+  }
+
+  try {
+    const buffer = Buffer.from(audioBase64, 'base64');
+    const form = new FormData();
+    form.append('model', model);
+    form.append('language', (language && typeof language === 'string') ? language : 'de');
+    form.append('file', new Blob([buffer], { type: 'audio/wav' }), 'speech.wav');
+
+    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: form
+    });
+
+    if (!response.ok) {
+      const details = await response.text();
+      return res.status(500).json({ error: 'Transkription fehlgeschlagen.', details });
+    }
+
+    const data = await response.json();
+    return res.json({ ok: true, transcript: data.text || '' });
   } catch (err) {
     return res.status(500).json({ error: 'Serverfehler', details: err.message });
   }
