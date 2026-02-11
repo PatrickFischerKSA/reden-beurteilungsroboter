@@ -40,6 +40,13 @@ OPENAI_MODEL="gpt-4.1"
 OPENAI_TRANSCRIBE_MODEL="gpt-4o-mini-transcribe"
 ```
 
+Sicherer auf macOS (empfohlen): Key im Keychain speichern.
+Dann wird er bei jedem Aufruf serverseitig geladen, ohne dass er im Browser landet:
+
+```bash
+security add-generic-password -a "$USER" -s "reden-beurteilungsroboter-openai" -w "sk-..." -U
+```
+
 ## Videoanalyse (optional)
 
 Die Videoanalyse laeuft lokal mit Canvas-Frame-Auswertung. Face-Detection nutzt die Browser-API, falls vorhanden.

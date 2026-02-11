@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const { execFileSync } = require('child_process');
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
@@ -28,6 +29,46 @@ function loadEnvFile(filePath) {
 
 loadEnvFile(path.join(__dirname, '.env.local'));
 loadEnvFile(path.join(__dirname, '.env'));
+
+const KEYCHAIN_SERVICE = 'reden-beurteilungsroboter-openai';
+let cachedApiKey = null;
+let cachedKeySource = 'none';
+
+function getApiKeyFromKeychain() {
+  if (process.platform !== 'darwin') return '';
+  try {
+    const out = execFileSync(
+      'security',
+      ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-w'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+    );
+    return (out || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function resolveApiKey() {
+  if (cachedApiKey) {
+    return { key: cachedApiKey, source: cachedKeySource };
+  }
+
+  const envKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_DEFAULT;
+  if (envKey) {
+    cachedApiKey = envKey;
+    cachedKeySource = 'server-env';
+    return { key: cachedApiKey, source: cachedKeySource };
+  }
+
+  const keychainKey = getApiKeyFromKeychain();
+  if (keychainKey) {
+    cachedApiKey = keychainKey;
+    cachedKeySource = 'macos-keychain';
+    return { key: cachedApiKey, source: cachedKeySource };
+  }
+
+  return { key: '', source: 'none' };
+}
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
@@ -146,20 +187,20 @@ server.listen(PORT, () => {
 });
 
 app.get('/api/health', (_req, res) => {
-  const headerKey = _req.headers['x-openai-api-key'];
-  const keyConfigured = Boolean(headerKey || process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_DEFAULT);
+  const resolved = resolveApiKey();
+  const keyConfigured = Boolean(resolved.key);
   res.json({
     ok: true,
     service: 'reden-beurteilungsroboter-api',
     keyConfigured,
-    keySource: headerKey ? 'client-header' : (process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_DEFAULT ? 'server-env' : 'none'),
+    keySource: resolved.source,
     model: process.env.OPENAI_MODEL || 'gpt-4.1',
     transcribeModel: process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe'
   });
 });
 
 app.post('/api/ai-feedback', async (req, res) => {
-  const apiKey = req.headers['x-openai-api-key'] || process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_DEFAULT;
+  const { key: apiKey } = resolveApiKey();
   const model = process.env.OPENAI_MODEL || 'gpt-4.1';
 
   if (!apiKey) {
@@ -278,7 +319,7 @@ Antworte als JSON mit:
 });
 
 app.post('/api/transcribe-audio', async (req, res) => {
-  const apiKey = req.headers['x-openai-api-key'] || process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_DEFAULT;
+  const { key: apiKey } = resolveApiKey();
   const model = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
 
   if (!apiKey) {
