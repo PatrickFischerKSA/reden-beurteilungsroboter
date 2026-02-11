@@ -201,7 +201,7 @@ app.get('/api/health', (_req, res) => {
 
 app.post('/api/ai-feedback', async (req, res) => {
   const { key: apiKey } = resolveApiKey();
-  const model = process.env.OPENAI_MODEL || 'gpt-4.1';
+  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
   if (!apiKey) {
     return res.status(400).json({ error: 'OPENAI_API_KEY fehlt.' });
@@ -253,7 +253,7 @@ Antworte als JSON mit:
     ];
 
     if (Array.isArray(videoFrames)) {
-      const selectedFrames = videoFrames.slice(0, 6);
+      const selectedFrames = videoFrames.slice(0, 3);
       selectedFrames.forEach((frame, idx) => {
         if (frame && typeof frame.dataUrl === 'string' && frame.dataUrl.startsWith('data:image/')) {
           content.push({
@@ -288,7 +288,8 @@ Antworte als JSON mit:
 
     if (!response.ok) {
       const errText = await response.text();
-      return res.status(500).json({ error: 'OpenAI API Fehler', details: errText });
+      const details = (errText || '').slice(0, 2000);
+      return res.status(500).json({ error: 'OpenAI API Fehler', details });
     }
 
     const data = await response.json();
