@@ -8,8 +8,6 @@ const downloadBtn = document.getElementById('downloadBtn');
 const aiBtn = document.getElementById('aiBtn');
 const aiStatus = document.getElementById('aiStatus');
 const aiFeedback = document.getElementById('aiFeedback');
-const apiKeyInput = document.getElementById('apiKeyInput');
-const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
 const testApiBtn = document.getElementById('testApiBtn');
 
 const totalScoreEl = document.getElementById('totalScore');
@@ -40,27 +38,6 @@ let mediaPipeFaceDetector = null;
 let apiBaseInUse = '';
 let lastErrorMessage = '';
 
-function loadClientApiKey() {
-  try {
-    return localStorage.getItem('openai_api_key_local') || '';
-  } catch (_err) {
-    return '';
-  }
-}
-
-function saveClientApiKey(key) {
-  try {
-    localStorage.setItem('openai_api_key_local', key);
-  } catch (_err) {
-  }
-}
-
-function maskKey(key) {
-  if (!key) return '-';
-  if (key.length < 8) return 'gesetzt';
-  return `${key.slice(0, 4)}...${key.slice(-4)}`;
-}
-
 function updateDebugBox(extra = {}) {
   if (extra.lastError !== undefined) {
     lastErrorMessage = extra.lastError || '';
@@ -84,7 +61,6 @@ function getApiBaseCandidates() {
 }
 
 async function postJsonWithFallback(path, payload) {
-  const clientKey = loadClientApiKey();
   const bases = getApiBaseCandidates();
   let lastError = null;
 
@@ -93,17 +69,13 @@ async function postJsonWithFallback(path, payload) {
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(clientKey ? { 'x-openai-api-key': clientKey } : {})
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
       const parsed = await safeJsonResponse(response);
       if (response.ok && parsed.data) {
         apiBaseInUse = base;
-        updateDebugBox({ keySource: clientKey ? `client (${maskKey(clientKey)})` : 'server-env' });
         return { ok: true, payload: parsed.data, url };
       }
 
@@ -131,16 +103,13 @@ async function postJsonWithFallback(path, payload) {
 }
 
 async function getJsonWithFallback(path) {
-  const clientKey = loadClientApiKey();
   const bases = getApiBaseCandidates();
   let lastError = null;
 
   for (const base of bases) {
     const url = `${base}${path}`;
     try {
-      const response = await fetch(url, {
-        headers: clientKey ? { 'x-openai-api-key': clientKey } : {}
-      });
+      const response = await fetch(url);
       const parsed = await safeJsonResponse(response);
       if (response.ok && parsed.data) {
         apiBaseInUse = base;
@@ -706,18 +675,13 @@ async function init() {
   const health = await getJsonWithFallback('/api/health');
   if (!health.ok) {
     aiStatus.textContent = `API nicht erreichbar: ${health.error}`;
-    updateDebugBox({ apiHealth: 'nicht erreichbar', lastError: health.error, keySource: loadClientApiKey() ? `client (${maskKey(loadClientApiKey())})` : 'server-env' });
+    updateDebugBox({ apiHealth: 'nicht erreichbar', lastError: health.error, keySource: 'server' });
   } else if (!health.payload.keyConfigured) {
-    if (loadClientApiKey()) {
-      aiStatus.textContent = 'API erreichbar. Client-Key aktiv.';
-      updateDebugBox({ apiHealth: 'ok', keySource: `client (${maskKey(loadClientApiKey())})` });
-    } else {
-      aiStatus.textContent = 'API erreichbar, aber kein OPENAI_API_KEY konfiguriert.';
-      updateDebugBox({ apiHealth: 'ok', keySource: 'kein key' });
-    }
+    aiStatus.textContent = 'API erreichbar, aber kein OPENAI_API_KEY konfiguriert.';
+    updateDebugBox({ apiHealth: 'ok', keySource: 'none' });
   } else {
     aiStatus.textContent = `API ok (${health.payload.model}).`;
-    updateDebugBox({ apiHealth: 'ok', keySource: 'server-env' });
+    updateDebugBox({ apiHealth: 'ok', keySource: health.payload.keySource || 'server' });
   }
 
   analysisStatus.textContent = 'Initialisiere Gesichtserkennung...';
@@ -826,17 +790,6 @@ init().catch(() => {
   updateDebugBox({ lastError: 'Initialisierung fehlgeschlagen' });
 });
 
-saveApiKeyBtn.addEventListener('click', async () => {
-  const key = (apiKeyInput.value || '').trim();
-  if (!key) {
-    aiStatus.textContent = 'Bitte zuerst einen API-Key eingeben.';
-    return;
-  }
-  saveClientApiKey(key);
-  aiStatus.textContent = 'Client-API-Key gespeichert.';
-  updateDebugBox({ keySource: `client (${maskKey(key)})` });
-});
-
 testApiBtn.addEventListener('click', async () => {
   aiStatus.textContent = 'Teste API-Verbindung...';
   const health = await getJsonWithFallback('/api/health');
@@ -848,8 +801,6 @@ testApiBtn.addEventListener('click', async () => {
   aiStatus.textContent = `API-Test ok (${health.url}).`;
   updateDebugBox({
     apiHealth: 'ok',
-    keySource: loadClientApiKey() ? `client (${maskKey(loadClientApiKey())})` : (health.payload.keyConfigured ? 'server-env' : 'kein key')
+    keySource: health.payload.keySource || (health.payload.keyConfigured ? 'server-env' : 'none')
   });
 });
-
-apiKeyInput.value = loadClientApiKey();

@@ -245,16 +245,6 @@ button:hover { transform: translateY(-1px); }
   word-break: break-word;
 }
 
-.debug-card input[type="password"] {
-  flex: 1;
-  min-width: 260px;
-  background: #0b111a;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  color: var(--ink);
-  padding: 10px 12px;
-}
-
 .feedback ul {
   padding-left: 18px;
 }
