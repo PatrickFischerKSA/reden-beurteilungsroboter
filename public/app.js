@@ -28,6 +28,47 @@ let detectorMode = 'none';
 let nativeFaceDetector = null;
 let mediaPipeFaceDetector = null;
 
+function getApiBaseCandidates() {
+  const candidates = [];
+  const origin = window.location.origin;
+  if (origin && origin !== 'null') candidates.push(origin);
+  if (!origin.includes('localhost:3000')) candidates.push('http://localhost:3000');
+  return [...new Set(candidates)];
+}
+
+async function postJsonWithFallback(path, payload) {
+  const bases = getApiBaseCandidates();
+  let lastError = null;
+
+  for (const base of bases) {
+    const url = `${base}${path}`;
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const parsed = await safeJsonResponse(response);
+      if (response.ok && parsed.data) {
+        return { ok: true, payload: parsed.data, url };
+      }
+
+      if (response.status === 404 || response.status === 405) {
+        lastError = `API an ${url} nicht verfuegbar (${response.status}).`;
+        continue;
+      }
+
+      const msg = parsed.data?.error || parsed.raw?.slice(0, 200) || `HTTP ${response.status}`;
+      return { ok: false, error: `${url}: ${msg}`, url };
+    } catch (err) {
+      lastError = `${url}: ${err.message}`;
+    }
+  }
+
+  return { ok: false, error: lastError || 'Keine API erreichbar.' };
+}
+
 function setFeatureStatus(opts = {}) {
   const face = opts.face || (detectorMode === 'none' ? 'nicht verfuegbar' : detectorMode);
   const audio = opts.audio || 'bereit';
@@ -550,19 +591,11 @@ async function getAutoTranscript() {
   try {
     aiStatus.textContent = 'Audio wird fuer Transkription vorbereitet...';
     const audioBase64 = await extractWavBase64(currentVideoFile);
-    const response = await fetch('/api/transcribe-audio', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ audioBase64, language: 'de' })
-    });
-
-    const parsed = await safeJsonResponse(response);
-    if (!response.ok || !parsed.data?.ok) {
-      const msg = parsed.data?.error || parsed.raw?.slice(0, 160) || 'Transkriptionsfehler';
-      throw new Error(msg);
+    const result = await postJsonWithFallback('/api/transcribe-audio', { audioBase64, language: 'de' });
+    if (!result.ok || !result.payload?.ok) {
+      throw new Error(result.error || 'Transkriptionsfehler');
     }
-
-    return parsed.data.transcript || '';
+    return result.payload.transcript || '';
   } catch (err) {
     aiStatus.textContent = `Transkription nicht verfuegbar: ${err.message}`;
     return '';
@@ -647,32 +680,25 @@ aiBtn.addEventListener('click', async () => {
 
   try {
     const transcript = await getAutoTranscript();
-
-    const response = await fetch('/api/ai-feedback', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        transcript,
-        metrics: {
-          duration: lastAnalysis.duration,
-          pauseRatio: lastAnalysis.audio ? lastAnalysis.audio.silentRatio : null,
-          dynamicRange: lastAnalysis.audio ? lastAnalysis.audio.dynamicRange : null,
-          motionEnergy: lastAnalysis.visual ? lastAnalysis.visual.motionEnergy : null,
-          facePresence: lastAnalysis.visual ? lastAnalysis.visual.facePresence : null,
-          eyeContactRatio: lastAnalysis.visual ? lastAnalysis.visual.eyeContactRatio : null
-        },
-        videoFrames: lastAnalysis.visual ? lastAnalysis.visual.keyframes : []
-      })
+    const result = await postJsonWithFallback('/api/ai-feedback', {
+      transcript,
+      metrics: {
+        duration: lastAnalysis.duration,
+        pauseRatio: lastAnalysis.audio ? lastAnalysis.audio.silentRatio : null,
+        dynamicRange: lastAnalysis.audio ? lastAnalysis.audio.dynamicRange : null,
+        motionEnergy: lastAnalysis.visual ? lastAnalysis.visual.motionEnergy : null,
+        facePresence: lastAnalysis.visual ? lastAnalysis.visual.facePresence : null,
+        eyeContactRatio: lastAnalysis.visual ? lastAnalysis.visual.eyeContactRatio : null
+      },
+      videoFrames: lastAnalysis.visual ? lastAnalysis.visual.keyframes : []
     });
 
-    const parsed = await safeJsonResponse(response);
-    if (!response.ok || !parsed.data?.ok) {
-      const msg = parsed.data?.error || parsed.raw?.slice(0, 180) || 'KI-Analyse fehlgeschlagen.';
-      throw new Error(msg);
+    if (!result.ok || !result.payload?.ok) {
+      throw new Error(result.error || 'KI-Analyse fehlgeschlagen.');
     }
 
-    renderAiFeedback(parsed.data.data);
-    aiStatus.textContent = 'KI-Feedback aktualisiert.';
+    renderAiFeedback(result.payload.data);
+    aiStatus.textContent = 'KI-Feedback aktualisiert (rhetorisch + inhaltlich).';
   } catch (err) {
     aiStatus.textContent = `Fehler: ${err.message}`;
   } finally {
