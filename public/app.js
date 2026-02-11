@@ -87,8 +87,9 @@ async function postJsonWithFallback(path, payload) {
       }
 
       const msg = parsed.data?.error || parsed.raw?.slice(0, 200) || `HTTP ${response.status}`;
+      const detail = parsed.data?.details ? ` | ${String(parsed.data.details).slice(0, 300)}` : '';
       updateDebugBox({ lastError: `${url}: ${msg}` });
-      return { ok: false, error: `${url}: ${msg}`, url };
+      return { ok: false, error: `${url}: ${msg}${detail}`, url };
     } catch (err) {
       const baseMsg = err && err.message ? err.message : 'Netzwerkfehler';
       if (String(baseMsg).includes('Failed to fetch')) {
@@ -412,7 +413,7 @@ async function analyzeVideoFrames(onProgress) {
 
   const sampleCount = Math.min(80, Math.max(28, Math.ceil(duration / 1.6)));
   const interval = duration / sampleCount;
-  const keyframeSteps = new Set([0, Math.floor(sampleCount * 0.2), Math.floor(sampleCount * 0.4), Math.floor(sampleCount * 0.6), Math.floor(sampleCount * 0.8), sampleCount - 1]);
+  const keyframeSteps = new Set([0, Math.floor(sampleCount * 0.5), sampleCount - 1]);
 
   const keyframes = [];
   let previous = null;
@@ -453,9 +454,10 @@ async function analyzeVideoFrames(onProgress) {
     }
 
     if (keyframeSteps.has(i)) {
+      keyCtx.drawImage(videoPreview, 0, 0, keyCanvas.width, keyCanvas.height);
       keyframes.push({
         timeSec: Math.round(t),
-        dataUrl: canvas.toDataURL('image/jpeg', 0.62)
+        dataUrl: keyCanvas.toDataURL('image/jpeg', 0.5)
       });
     }
 
@@ -854,3 +856,7 @@ testApiBtn.addEventListener('click', async () => {
     keySource: health.payload.keySource || (health.payload.keyConfigured ? 'server-env' : 'none')
   });
 });
+  const keyCanvas = document.createElement('canvas');
+  keyCanvas.width = 320;
+  keyCanvas.height = 180;
+  const keyCtx = keyCanvas.getContext('2d');
