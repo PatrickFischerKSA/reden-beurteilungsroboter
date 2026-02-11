@@ -1,34 +1,34 @@
 const rubricData = [
   {
     id: 'inhalt',
-    title: 'Inhalt Eröffnungsrede',
+    title: 'Inhalt Eroeffnungsrede',
     weight: '8%',
     maxPoints: 2,
     criteria: [
       'Korrektheit der Behauptungen',
-      'Schlüssigkeit der Argumentation',
+      'Schluessigkeit der Argumentation',
       'Strategie',
       'Problembewusstsein (u. a. Achtung vor Grundrechten)',
-      'Breite der Informationen (mit Blick auf die ergänzende Rede)',
+      'Breite der Informationen (mit Blick auf die ergaenzende Rede)',
       'Publikumsgerechtigkeit'
     ]
   },
   {
     id: 'form_text',
-    title: 'Form Eröffnungsrede (Text)',
+    title: 'Form Eroeffnungsrede (Text)',
     weight: '4%',
     maxPoints: 1,
     criteria: [
       'Aufbau',
       'Rhetorische Gestaltung und Stilistik',
       'Sprachlogik',
-      'Umfang (2–3 Minuten)',
+      'Umfang (2-3 Minuten)',
       'Sprachliche Korrektheit'
     ]
   },
   {
     id: 'form_auftritt',
-    title: 'Form Eröffnungsrede (Auftritt)',
+    title: 'Form Eroeffnungsrede (Auftritt)',
     weight: '8%',
     maxPoints: 2,
     criteria: [
@@ -39,23 +39,18 @@ const rubricData = [
       'Gestik',
       'Intonation',
       'Tempo',
-      'Lautstärke',
+      'Lautstaerke',
       'Artikulation',
       'Redefluss'
     ]
   }
 ];
 
-const fillers = [
-  'äh', 'ähm', 'hm', 'also', 'sozusagen', 'irgendwie', 'halt', 'eben', 'quasi', 'naja', 'ok', 'okay', 'tja'
-];
-
 const rubricRoot = document.getElementById('rubric');
 const videoInput = document.getElementById('videoInput');
 const videoPreview = document.getElementById('videoPreview');
 const videoMeta = document.getElementById('videoMeta');
-const cvToggle = document.getElementById('cvToggle');
-const cvStatus = document.getElementById('cvStatus');
+const analysisStatus = document.getElementById('analysisStatus');
 const transcript = document.getElementById('transcript');
 const transcriptMeta = document.getElementById('transcriptMeta');
 const analyzeBtn = document.getElementById('analyzeBtn');
@@ -74,9 +69,10 @@ const faceScoreEl = document.getElementById('faceScore');
 const timeHintEl = document.getElementById('timeHint');
 const feedbackEl = document.getElementById('feedback');
 
-let lastAnalysis = null;
+let currentVideoFile = null;
 let audioMetrics = null;
-let cvMetrics = null;
+let visualMetrics = null;
+let lastAnalysis = null;
 
 function renderRubric() {
   rubricRoot.innerHTML = '';
@@ -98,7 +94,7 @@ function renderRubric() {
       label.innerHTML = `
         <div>${criterion}</div>
         <input type="range" min="0" max="${section.maxPoints}" step="0.5" value="0" />
-        <div class="value">Selbsteinschätzung: <span>0</span> / ${section.maxPoints}</div>
+        <div class="value">Selbsteinschaetzung: <span>0</span> / ${section.maxPoints}</div>
       `;
       const input = label.querySelector('input');
       const valueSpan = label.querySelector('span');
@@ -117,13 +113,14 @@ function renderRubric() {
 }
 
 function wordCount(text) {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  return words.length;
+  return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function calcWpm(words, seconds) {
-  if (!seconds || !words) return 0;
-  return Math.round((words / (seconds / 60)) * 10) / 10;
+function formatTime(seconds) {
+  if (!seconds || !Number.isFinite(seconds)) return '-';
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
 }
 
 function getVideoDuration() {
@@ -133,16 +130,19 @@ function getVideoDuration() {
 
 function updateTranscriptMeta() {
   const words = wordCount(transcript.value);
-  const duration = getVideoDuration();
-  const wpm = calcWpm(words, duration);
-  transcriptMeta.textContent = `Wörter: ${words} · Tempo: ${wpm ? wpm + ' W/Min' : '–'}`;
+  transcriptMeta.textContent = `Woerter: ${words} · optional fuer KI-Feedback`;
 }
 
-function formatTime(seconds) {
-  if (!seconds || !Number.isFinite(seconds)) return '–';
-  const m = Math.floor(seconds / 60);
-  const s = Math.round(seconds % 60).toString().padStart(2, '0');
-  return `${m}:${s}`;
+function seekTo(time) {
+  return new Promise((resolve) => {
+    const onSeeked = () => {
+      videoPreview.removeEventListener('seeked', onSeeked);
+      resolve();
+    };
+    videoPreview.addEventListener('seeked', onSeeked);
+    const maxTime = Math.max(0, (videoPreview.duration || 0) - 0.02);
+    videoPreview.currentTime = Math.max(0, Math.min(time, maxTime));
+  });
 }
 
 async function analyzeAudio(file) {
@@ -152,266 +152,278 @@ async function analyzeAudio(file) {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
     const channel = audioBuffer.getChannelData(0);
-    let sum = 0;
+
+    const step = 2048;
     let silent = 0;
-    const threshold = 0.02;
-    for (let i = 0; i < channel.length; i += 2048) {
-      const sample = channel[i];
-      sum += Math.abs(sample);
-      if (Math.abs(sample) < threshold) silent += 1;
+    let sum = 0;
+    let peak = 0;
+    const energySeries = [];
+
+    for (let i = 0; i < channel.length; i += step) {
+      const sample = Math.abs(channel[i]);
+      energySeries.push(sample);
+      sum += sample;
+      if (sample < 0.02) silent += 1;
+      if (sample > peak) peak = sample;
     }
-    const avg = sum / (channel.length / 2048);
-    const silentRatio = silent / (channel.length / 2048);
+
+    const frames = Math.max(1, Math.floor(channel.length / step));
+    const avgVolume = sum / frames;
+    const silentRatio = silent / frames;
+    const dynamicRange = Math.max(0, peak - avgVolume);
+
     audioContext.close();
-    return {
-      avgVolume: avg,
-      silentRatio
-    };
-  } catch (err) {
+    return { avgVolume, silentRatio, dynamicRange };
+  } catch (_err) {
     return null;
   }
 }
 
-function seekTo(time) {
-  return new Promise((resolve) => {
-    const handler = () => {
-      videoPreview.removeEventListener('seeked', handler);
-      resolve();
-    };
-    videoPreview.addEventListener('seeked', handler);
-    const safeTime = Math.max(0, Math.min(time, (videoPreview.duration || 0) - 0.01));
-    videoPreview.currentTime = safeTime;
-  });
+function tempoLabel(audio) {
+  if (!audio) return '-';
+  if (audio.silentRatio > 0.42) return 'eher langsam';
+  if (audio.silentRatio < 0.18) return 'eher schnell';
+  return 'ausgeglichen';
 }
 
-async function analyzeVideoCV() {
-  if (!cvToggle.checked) return null;
-  if (!getVideoDuration()) return null;
-  if (typeof FaceDetection === 'undefined' || typeof Pose === 'undefined') return null;
-
-  const faceDetection = new FaceDetection({
-    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
-  });
-  faceDetection.setOptions({
-    model: 'short',
-    minDetectionConfidence: 0.5
-  });
-  let faceResult = null;
-  faceDetection.onResults((res) => {
-    faceResult = res;
-  });
-
-  const pose = new Pose({
-    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-  });
-  pose.setOptions({
-    modelComplexity: 0,
-    smoothLandmarks: true,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
-  });
-  let poseResult = null;
-  pose.onResults((res) => {
-    poseResult = res;
-  });
-
+async function analyzeVideoFrames(onProgress) {
   const duration = getVideoDuration();
-  const maxFrames = 120;
-  const sampleCount = Math.min(maxFrames, Math.max(20, Math.ceil(duration / 0.6)));
-  const interval = duration / sampleCount;
+  if (!duration) return null;
 
-  let frames = 0;
+  const width = 192;
+  const height = 108;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  const detector = ('FaceDetector' in window)
+    ? new FaceDetector({ fastMode: true, maxDetectedFaces: 1 })
+    : null;
+
+  const sampleCount = Math.min(64, Math.max(24, Math.ceil(duration / 2)));
+  const interval = duration / sampleCount;
+  const keyframeSteps = new Set([0, Math.floor(sampleCount * 0.2), Math.floor(sampleCount * 0.4), Math.floor(sampleCount * 0.6), Math.floor(sampleCount * 0.8), sampleCount - 1]);
+
+  const keyframes = [];
+  let previous = null;
+  let motionSum = 0;
+  let motionFrames = 0;
   let faceDetected = 0;
-  let eyeContact = 0;
-  let movementSum = 0;
-  let movementFrames = 0;
-  let prevWrist = null;
+  let eyeCentered = 0;
 
   const originalTime = videoPreview.currentTime;
   const wasPaused = videoPreview.paused;
   videoPreview.pause();
 
-  for (let i = 0; i <= sampleCount; i += 1) {
+  for (let i = 0; i < sampleCount; i += 1) {
     const t = Math.min(duration - 0.02, i * interval);
     await seekTo(t);
-    await faceDetection.send({ image: videoPreview });
-    await pose.send({ image: videoPreview });
+    ctx.drawImage(videoPreview, 0, 0, width, height);
 
-    frames += 1;
-
-    if (faceResult?.detections?.length) {
-      faceDetected += 1;
-      const box = faceResult.detections[0].boundingBox || {};
-      const cxRaw = box.xCenter ?? (box.xmin + (box.width || 0) / 2);
-      const cyRaw = box.yCenter ?? (box.ymin + (box.height || 0) / 2);
-      const w = videoPreview.videoWidth || 1;
-      const h = videoPreview.videoHeight || 1;
-      const cx = cxRaw > 1 ? cxRaw / w : cxRaw;
-      const cy = cyRaw > 1 ? cyRaw / h : cyRaw;
-      if (Math.abs(cx - 0.5) < 0.15 && Math.abs(cy - 0.5) < 0.2) {
-        eyeContact += 1;
+    const img = ctx.getImageData(0, 0, width, height).data;
+    if (previous) {
+      let diff = 0;
+      for (let p = 0; p < img.length; p += 16) {
+        diff += Math.abs(img[p] - previous[p]);
       }
+      motionSum += diff / (img.length / 16) / 255;
+      motionFrames += 1;
     }
+    previous = img;
 
-    if (poseResult?.poseLandmarks?.length) {
-      const left = poseResult.poseLandmarks[15];
-      const right = poseResult.poseLandmarks[16];
-      if (left && right) {
-        const wrist = { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
-        if (prevWrist) {
-          const dx = wrist.x - prevWrist.x;
-          const dy = wrist.y - prevWrist.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          movementSum += dist;
-          movementFrames += 1;
+    if (detector) {
+      try {
+        const faces = await detector.detect(canvas);
+        if (faces.length) {
+          faceDetected += 1;
+          const box = faces[0].boundingBox;
+          const cx = (box.x + box.width / 2) / width;
+          const cy = (box.y + box.height / 2) / height;
+          if (Math.abs(cx - 0.5) < 0.18 && Math.abs(cy - 0.45) < 0.2) {
+            eyeCentered += 1;
+          }
         }
-        prevWrist = wrist;
+      } catch (_err) {
+        // FaceDetector can fail depending on browser/runtime; analysis continues.
       }
     }
+
+    if (keyframeSteps.has(i)) {
+      keyframes.push({
+        timeSec: Math.round(t),
+        dataUrl: canvas.toDataURL('image/jpeg', 0.58)
+      });
+    }
+
+    if (onProgress) onProgress(i + 1, sampleCount);
   }
 
   await seekTo(originalTime);
-  if (!wasPaused) {
-    videoPreview.play().catch(() => {});
-  }
+  if (!wasPaused) videoPreview.play().catch(() => {});
 
-  faceDetection.close && faceDetection.close();
-  pose.close && pose.close();
-
-  const facePresence = frames ? faceDetected / frames : 0;
-  const eyeContactRatio = faceDetected ? eyeContact / faceDetected : 0;
-  const gestureEnergy = movementFrames ? movementSum / movementFrames : 0;
+  const facePresence = detector ? faceDetected / sampleCount : null;
+  const eyeContactRatio = detector && faceDetected ? eyeCentered / faceDetected : null;
+  const motionEnergy = motionFrames ? motionSum / motionFrames : 0;
 
   return {
+    motionEnergy,
     facePresence,
     eyeContactRatio,
-    gestureEnergy,
-    frames
+    keyframes,
+    sampleCount,
+    detectorAvailable: Boolean(detector)
   };
 }
 
 function collectScores() {
   const sections = {};
+  let hasInput = false;
+
   rubricData.forEach((section) => {
     const inputs = Array.from(document.querySelectorAll(`[data-section="${section.id}"] input`));
     const values = inputs.map((input) => Number(input.value));
+    if (values.some((v) => v > 0)) hasInput = true;
     const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+
     sections[section.id] = {
       avg,
       max: section.maxPoints,
       title: section.title
     };
   });
-  return sections;
+
+  return { sections, hasInput };
 }
 
-function fillerCount(text) {
-  const lower = text.toLowerCase();
-  return fillers.reduce((total, filler) => {
-    const regex = new RegExp(`\\b${filler}\\b`, 'g');
-    const matches = lower.match(regex);
-    return total + (matches ? matches.length : 0);
-  }, 0);
+function videoScore({ duration, audio, visual }) {
+  let score = 0;
+  let max = 0;
+
+  max += 1.5;
+  if (duration >= 120 && duration <= 180) score += 1.5;
+  else if (duration >= 90 && duration <= 210) score += 0.8;
+
+  max += 1.2;
+  if (audio) {
+    if (audio.silentRatio >= 0.18 && audio.silentRatio <= 0.38) score += 1.2;
+    else score += 0.6;
+  }
+
+  max += 1.2;
+  if (visual) {
+    if (visual.motionEnergy >= 0.01 && visual.motionEnergy <= 0.055) score += 1.2;
+    else if (visual.motionEnergy > 0.004) score += 0.7;
+  }
+
+  if (visual && visual.detectorAvailable && visual.facePresence !== null) {
+    max += 1.1;
+    if (visual.facePresence >= 0.6) score += 1.1;
+    else if (visual.facePresence >= 0.4) score += 0.6;
+
+    max += 1.0;
+    if (visual.eyeContactRatio >= 0.55) score += 1.0;
+    else if (visual.eyeContactRatio >= 0.35) score += 0.5;
+  }
+
+  if (!max) return 0;
+  return (score / max) * 5;
 }
 
-function buildFeedback({ duration, words, wpm, fillerTotal, scores, audio, cv }) {
+function buildFeedback({ duration, audio, visual, rubric }) {
   const feedback = [];
+
   if (!duration) {
-    feedback.push('Füge ein Video hinzu, damit Dauer und Tempo gemessen werden können.');
-  } else if (duration < 120) {
-    feedback.push('Deine Rede ist unter 2 Minuten. Ergänze ein kurzes Strategie‑ oder Problem‑Argument, um den Umfang zu erweitern.');
-  } else if (duration > 180) {
-    feedback.push('Deine Rede ist länger als 3 Minuten. Kürze Nebenargumente oder bündle Beispiele.');
+    feedback.push('Kein Video erkannt. Bitte zuerst ein Video hochladen.');
+    return feedback;
+  }
+
+  if (duration < 120) feedback.push('Rede ist zu kurz fuer das Ziel (2-3 Minuten). Erweitere einen Hauptpunkt mit Beispiel und Gegenargument.');
+  if (duration > 180) feedback.push('Rede ist zu lang fuer das Ziel (2-3 Minuten). Straffe Einleitung und Nebengedanken.');
+  if (duration >= 120 && duration <= 180) feedback.push('Zeitfenster 2-3 Minuten ist erreicht.');
+
+  if (audio) {
+    if (audio.silentRatio < 0.18) feedback.push('Wenig Pausen erkennbar. Setze nach Kernaussagen kurze Sprechpausen.');
+    if (audio.silentRatio > 0.38) feedback.push('Viele laengere Pausen erkennbar. Verbinde Argumente mit klaren Uebergaengen.');
+    if (audio.dynamicRange < 0.08) feedback.push('Stimmliche Dynamik wirkt eher flach. Arbeite mit gezielter Betonung.');
   } else {
-    feedback.push('Die Dauer liegt im Zielbereich (2–3 Minuten).');
+    feedback.push('Audio konnte nicht ausgewertet werden. Pruefe, ob das Video eine Tonspur enthaelt.');
   }
 
-  if (wpm) {
-    if (wpm < 110) feedback.push('Du sprichst eher langsam. Erhöhe die Spannung mit klaren Übergängen und etwas mehr Tempo.');
-    if (wpm > 150) feedback.push('Das Tempo ist hoch. Baue bewusst kurze Pausen für Schlüsselargumente ein.');
-    if (wpm >= 110 && wpm <= 150) feedback.push('Dein Sprechtempo liegt im idealen Bereich.');
-  }
+  if (visual) {
+    if (visual.motionEnergy < 0.01) feedback.push('Sehr wenig koerperliche Bewegung. Nutze Gestik zur Strukturierung deiner Argumente.');
+    if (visual.motionEnergy > 0.06) feedback.push('Sehr hohe Bewegungsenergie. Reduziere unruhige Bewegungen und halte den Stand stabil.');
 
-  if (words) {
-    if (fillerTotal > 6) feedback.push('Viele Füllwörter erkannt. Übe bewusste Pausen statt „äh/also“.');
-    if (fillerTotal <= 6) feedback.push('Die Anzahl an Füllwörtern ist gering – gut für die Klarheit.');
-  }
-
-  if (audio?.silentRatio) {
-    if (audio.silentRatio < 0.15) feedback.push('Du machst wenige Pausen. Setze nach wichtigen Aussagen eine kurze Pause.');
-    if (audio.silentRatio > 0.35) feedback.push('Viele Pausen erkannt. Achte darauf, den Redefluss stabil zu halten.');
-  }
-
-  if (cv?.facePresence !== undefined) {
-    if (cv.facePresence < 0.6) feedback.push('Dein Gesicht wird nur selten erkannt. Achte auf gute Beleuchtung und eine zentrale Kameraposition.');
-    if (cv.eyeContactRatio < 0.55) feedback.push('Der Blickkontakt wirkt wechselhaft. Richte den Blick häufiger zur Kamera.');
-    if (cv.gestureEnergy < 0.01) feedback.push('Sehr wenig Gestik erkannt. Ergänze Handbewegungen zur Strukturierung deiner Argumente.');
-    if (cv.gestureEnergy > 0.05) feedback.push('Sehr viel Gestik erkannt. Achte darauf, Bewegungen gezielt einzusetzen.');
-  }
-
-  Object.values(scores).forEach((section) => {
-    if (section.avg <= section.max * 0.6) {
-      feedback.push(`Im Bereich „${section.title}“ gibt es Potenzial. Suche dir 1–2 Kriterien und übe sie gezielt.`);
+    if (visual.detectorAvailable) {
+      if (visual.facePresence !== null && visual.facePresence < 0.55) {
+        feedback.push('Gesicht oft nicht klar im Bild. Kamerahoehe und Bildausschnitt verbessern.');
+      }
+      if (visual.eyeContactRatio !== null && visual.eyeContactRatio < 0.5) {
+        feedback.push('Blickkontakt zur Kamera ist ausbaufahig. Blick haeufiger zum Objektiv richten.');
+      }
+    } else {
+      feedback.push('Browser bietet keine Face-Detection. Blickkontakt-Metrik ist deshalb nicht verfuegbar.');
     }
-  });
+  }
 
-  feedback.push('Nutze das Raster als Lernfahrplan: Notiere zu jedem niedrigen Kriterium eine konkrete Übung (z. B. Blickkontakt, Gestik, Präzision der Argumente).');
+  if (rubric.hasInput) {
+    Object.values(rubric.sections).forEach((section) => {
+      if (section.avg <= section.max * 0.6) {
+        feedback.push(`Im Bereich "${section.title}" ist Potenzial vorhanden. Uebe 1-2 Kriterien gezielt.`);
+      }
+    });
+  }
 
+  feedback.push('Naechster Lernschritt: exakt eine Stellschraube auswaehlen und die Rede danach erneut aufnehmen.');
   return feedback;
 }
 
-function updateScoreboard({ duration, wpm, audio, cv }) {
-  timeScoreEl.textContent = duration ? formatTime(duration) : '–';
-  tempoScoreEl.textContent = wpm ? `${wpm} W/Min` : '–';
-  if (audio?.silentRatio !== undefined) {
-    pauseScoreEl.textContent = `${Math.round(audio.silentRatio * 100)}%`; 
+function updateScoreboard({ duration, audio, visual }) {
+  timeScoreEl.textContent = duration ? formatTime(duration) : '-';
+  tempoScoreEl.textContent = tempoLabel(audio);
+  pauseScoreEl.textContent = audio ? `${Math.round(audio.silentRatio * 100)}%` : '-';
+
+  if (visual && visual.motionEnergy !== undefined) {
+    gestureScoreEl.textContent = visual.motionEnergy.toFixed(3);
   } else {
-    pauseScoreEl.textContent = '–';
+    gestureScoreEl.textContent = '-';
   }
 
-  if (cv?.eyeContactRatio !== undefined) {
-    eyeScoreEl.textContent = `${Math.round(cv.eyeContactRatio * 100)}%`;
-    gestureScoreEl.textContent = cv.gestureEnergy.toFixed(3);
-    faceScoreEl.textContent = `${Math.round(cv.facePresence * 100)}%`;
+  if (visual && visual.facePresence !== null && visual.facePresence !== undefined) {
+    faceScoreEl.textContent = `${Math.round(visual.facePresence * 100)}%`;
   } else {
-    eyeScoreEl.textContent = '–';
-    gestureScoreEl.textContent = '–';
-    faceScoreEl.textContent = '–';
+    faceScoreEl.textContent = '-';
+  }
+
+  if (visual && visual.eyeContactRatio !== null && visual.eyeContactRatio !== undefined) {
+    eyeScoreEl.textContent = `${Math.round(visual.eyeContactRatio * 100)}%`;
+  } else {
+    eyeScoreEl.textContent = '-';
   }
 
   if (duration) {
-    if (duration < 120) timeHintEl.textContent = 'Unter 2 Minuten – erweitere Inhalt oder Beispiele.';
-    else if (duration > 180) timeHintEl.textContent = 'Über 3 Minuten – straffe Nebenpunkte.';
-    else timeHintEl.textContent = 'Zielbereich getroffen.';
+    if (duration < 120) timeHintEl.textContent = 'Unter 2 Minuten.';
+    else if (duration > 180) timeHintEl.textContent = 'Ueber 3 Minuten.';
+    else timeHintEl.textContent = 'Zielbereich erreicht.';
   }
-}
-
-function scoreSummary(scores) {
-  const total = Object.values(scores).reduce((sum, section) => sum + section.avg, 0);
-  return Math.round(total * 10) / 10;
 }
 
 function buildReport(data) {
   const lines = [];
-  lines.push('# Reden‑Beurteilungsroboter – Bericht');
+  lines.push('# Reden-Beurteilungsroboter - Bericht');
   lines.push('');
   lines.push(`Datum: ${new Date().toLocaleString('de-CH')}`);
   lines.push('');
-  lines.push('## Messwerte');
-  lines.push(`- Dauer: ${data.duration ? formatTime(data.duration) : '–'}`);
-  lines.push(`- Wörter: ${data.words}`);
-  lines.push(`- Tempo: ${data.wpm ? data.wpm + ' W/Min' : '–'}`);
-  if (data.audio?.silentRatio !== undefined) {
-    lines.push(`- Pausenanteil: ${Math.round(data.audio.silentRatio * 100)}%`);
-  }
-  if (data.cvMetrics?.eyeContactRatio !== undefined) {
-    lines.push(`- Blickkontakt (Proxy): ${Math.round(data.cvMetrics.eyeContactRatio * 100)}%`);
-    lines.push(`- Gestik (Bewegung): ${data.cvMetrics.gestureEnergy.toFixed(3)}`);
-    lines.push(`- Gesicht erkannt: ${Math.round(data.cvMetrics.facePresence * 100)}%`);
-  }
+  lines.push('## Videoanalyse');
+  lines.push(`- Dauer: ${data.duration ? formatTime(data.duration) : '-'}`);
+  lines.push(`- Sprechtempo (Proxy): ${tempoLabel(data.audio)}`);
+  lines.push(`- Pausenanteil: ${data.audio ? Math.round(data.audio.silentRatio * 100) + '%' : '-'}`);
+  lines.push(`- Bewegungsenergie: ${data.visual ? data.visual.motionEnergy.toFixed(3) : '-'}`);
+  lines.push(`- Gesicht im Bild: ${data.visual && data.visual.facePresence !== null ? Math.round(data.visual.facePresence * 100) + '%' : '-'}`);
+  lines.push(`- Blickkontakt (Proxy): ${data.visual && data.visual.eyeContactRatio !== null ? Math.round(data.visual.eyeContactRatio * 100) + '%' : '-'}`);
   lines.push('');
-  lines.push('## Selbsteinschätzung');
-  Object.values(data.scores).forEach((section) => {
+  lines.push('## Selbsteinschaetzung');
+  Object.values(data.rubric.sections).forEach((section) => {
     lines.push(`- ${section.title}: ${section.avg.toFixed(1)} / ${section.max}`);
   });
   lines.push('');
@@ -419,85 +431,6 @@ function buildReport(data) {
   data.feedback.forEach((tip) => lines.push(`- ${tip}`));
   return lines.join('\n');
 }
-
-renderRubric();
-
-videoInput.addEventListener('change', async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-  const url = URL.createObjectURL(file);
-  videoPreview.src = url;
-  videoPreview.load();
-
-  videoPreview.onloadedmetadata = () => {
-    const duration = videoPreview.duration;
-    videoMeta.textContent = `Datei: ${file.name} · Dauer: ${formatTime(duration)}`;
-    updateTranscriptMeta();
-  };
-
-  audioMetrics = await analyzeAudio(file);
-});
-
-transcript.addEventListener('input', updateTranscriptMeta);
-
-analyzeBtn.addEventListener('click', async () => {
-  analyzeBtn.disabled = true;
-  analyzeBtn.textContent = 'Analyse läuft...';
-  cvStatus.textContent = cvToggle.checked ? 'Videoanalyse läuft...' : 'Videoanalyse aus.';
-
-  if (cvToggle.checked) {
-    cvMetrics = await analyzeVideoCV();
-    if (cvMetrics) {
-      cvStatus.textContent = 'Videoanalyse abgeschlossen.';
-    } else {
-      cvStatus.textContent = 'Videoanalyse nicht verfügbar (fehlende Unterstützung oder kein Video).';
-    }
-  } else {
-    cvMetrics = null;
-  }
-
-  const duration = getVideoDuration();
-  const words = wordCount(transcript.value);
-  const wpm = calcWpm(words, duration);
-  const fillerTotal = fillerCount(transcript.value);
-  const scores = collectScores();
-  const feedback = buildFeedback({ duration, words, wpm, fillerTotal, scores, audio: audioMetrics, cv: cvMetrics });
-  const totalScore = scoreSummary(scores);
-
-  totalScoreEl.textContent = totalScore.toFixed(1);
-  updateScoreboard({ duration, wpm, audio: audioMetrics, cv: cvMetrics });
-
-  feedbackEl.innerHTML = '<ul>' + feedback.map((tip) => `<li>${tip}</li>`).join('') + '</ul>';
-
-  lastAnalysis = {
-    duration,
-    words,
-    wpm,
-    fillerTotal,
-    scores,
-    feedback,
-    audio: audioMetrics,
-    cvMetrics
-  };
-
-  analyzeBtn.disabled = false;
-  analyzeBtn.textContent = 'Analyse starten';
-});
-
-downloadBtn.addEventListener('click', () => {
-  if (!lastAnalysis) {
-    feedbackEl.innerHTML = '<p>Bitte zuerst analysieren.</p>';
-    return;
-  }
-  const report = buildReport(lastAnalysis);
-  const blob = new Blob([report], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'reden-beurteilung-bericht.md';
-  a.click();
-  URL.revokeObjectURL(url);
-});
 
 function renderAiFeedback(data) {
   aiFeedback.innerHTML = '';
@@ -510,19 +443,19 @@ function renderAiFeedback(data) {
     container.appendChild(p);
   }
 
-  const lists = [
-    { title: 'Stärken', key: 'strengths' },
+  const blocks = [
+    { title: 'Staerken', key: 'strengths' },
     { title: 'Verbesserungen', key: 'improvements' },
     { title: 'Tipps', key: 'tips' },
-    { title: 'Nächste Schritte', key: 'next_steps' }
+    { title: 'Naechste Schritte', key: 'next_steps' }
   ];
 
-  lists.forEach((item) => {
-    if (Array.isArray(data[item.key]) && data[item.key].length) {
+  blocks.forEach((block) => {
+    if (Array.isArray(data[block.key]) && data[block.key].length) {
       const h = document.createElement('h3');
-      h.textContent = item.title;
+      h.textContent = block.title;
       const ul = document.createElement('ul');
-      data[item.key].forEach((entry) => {
+      data[block.key].forEach((entry) => {
         const li = document.createElement('li');
         li.textContent = entry;
         ul.appendChild(li);
@@ -535,14 +468,101 @@ function renderAiFeedback(data) {
   aiFeedback.appendChild(container);
 }
 
+async function runLocalAnalysis() {
+  if (!currentVideoFile || !getVideoDuration()) {
+    analysisStatus.textContent = 'Bitte zuerst ein Video laden.';
+    return;
+  }
+
+  analyzeBtn.disabled = true;
+  analyzeBtn.textContent = 'Analyse laeuft...';
+  analysisStatus.textContent = 'Audioanalyse laeuft...';
+
+  audioMetrics = await analyzeAudio(currentVideoFile);
+
+  analysisStatus.textContent = 'Video wird ausgewertet...';
+  visualMetrics = await analyzeVideoFrames((step, total) => {
+    analysisStatus.textContent = `Videoanalyse: ${step}/${total} Frames`;
+  });
+
+  const duration = getVideoDuration();
+  const rubric = collectScores();
+  const autoScore = videoScore({ duration, audio: audioMetrics, visual: visualMetrics });
+  const rubricScore = Object.values(rubric.sections).reduce((sum, section) => sum + section.avg, 0);
+  const totalScore = rubric.hasInput ? (autoScore + rubricScore) / 2 : autoScore;
+
+  const feedback = buildFeedback({
+    duration,
+    audio: audioMetrics,
+    visual: visualMetrics,
+    rubric
+  });
+
+  totalScoreEl.textContent = totalScore.toFixed(1);
+  updateScoreboard({ duration, audio: audioMetrics, visual: visualMetrics });
+  feedbackEl.innerHTML = `<ul>${feedback.map((tip) => `<li>${tip}</li>`).join('')}</ul>`;
+  analysisStatus.textContent = 'Analyse abgeschlossen.';
+
+  lastAnalysis = {
+    duration,
+    audio: audioMetrics,
+    visual: visualMetrics,
+    rubric,
+    feedback,
+    score: totalScore,
+    transcript: transcript.value.trim()
+  };
+
+  analyzeBtn.disabled = false;
+  analyzeBtn.textContent = 'Video erneut analysieren';
+}
+
+renderRubric();
+updateTranscriptMeta();
+
+videoInput.addEventListener('change', async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  currentVideoFile = file;
+  const url = URL.createObjectURL(file);
+  videoPreview.src = url;
+  videoPreview.load();
+
+  videoPreview.onloadedmetadata = async () => {
+    videoMeta.textContent = `Datei: ${file.name} · Dauer: ${formatTime(videoPreview.duration)}`;
+    analysisStatus.textContent = 'Video geladen. Starte automatische Analyse...';
+    await runLocalAnalysis();
+  };
+});
+
+transcript.addEventListener('input', updateTranscriptMeta);
+analyzeBtn.addEventListener('click', runLocalAnalysis);
+
+downloadBtn.addEventListener('click', () => {
+  if (!lastAnalysis) {
+    feedbackEl.innerHTML = '<p>Bitte zuerst analysieren.</p>';
+    return;
+  }
+
+  const report = buildReport(lastAnalysis);
+  const blob = new Blob([report], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'reden-beurteilung-bericht.md';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
 aiBtn.addEventListener('click', async () => {
   if (!lastAnalysis) {
-    aiStatus.textContent = 'Bitte zuerst die lokale Analyse ausführen.';
+    aiStatus.textContent = 'Bitte zuerst lokale Videoanalyse ausfuehren.';
     return;
   }
 
   aiBtn.disabled = true;
-  aiStatus.textContent = 'KI‑Analyse läuft...';
+  aiStatus.textContent = 'KI-Feedback laeuft...';
   aiFeedback.innerHTML = '';
 
   try {
@@ -550,25 +570,27 @@ aiBtn.addEventListener('click', async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        transcript: transcript.value,
-        scores: lastAnalysis.scores,
+        transcript: transcript.value.trim(),
         metrics: {
           duration: lastAnalysis.duration,
-          words: lastAnalysis.words,
-          wpm: lastAnalysis.wpm,
-          fillerTotal: lastAnalysis.fillerTotal
+          pauseRatio: lastAnalysis.audio ? lastAnalysis.audio.silentRatio : null,
+          dynamicRange: lastAnalysis.audio ? lastAnalysis.audio.dynamicRange : null,
+          motionEnergy: lastAnalysis.visual ? lastAnalysis.visual.motionEnergy : null,
+          facePresence: lastAnalysis.visual ? lastAnalysis.visual.facePresence : null,
+          eyeContactRatio: lastAnalysis.visual ? lastAnalysis.visual.eyeContactRatio : null
         },
-        cvMetrics: lastAnalysis.cvMetrics
+        scores: lastAnalysis.rubric.sections,
+        videoFrames: lastAnalysis.visual ? lastAnalysis.visual.keyframes : []
       })
     });
 
     const payload = await response.json();
     if (!response.ok || !payload.ok) {
-      throw new Error(payload.error || 'KI‑Analyse fehlgeschlagen.');
+      throw new Error(payload.error || 'KI-Analyse fehlgeschlagen.');
     }
 
     renderAiFeedback(payload.data);
-    aiStatus.textContent = 'KI‑Feedback aktualisiert.';
+    aiStatus.textContent = 'KI-Feedback aktualisiert.';
   } catch (err) {
     aiStatus.textContent = `Fehler: ${err.message}`;
   } finally {

@@ -21,21 +21,17 @@
     <section class="upload-panel">
       <div class="card">
         <h2>1. Video hochladen</h2>
-        <p>Das Video bleibt lokal in deinem Browser. Es wird nichts hochgeladen.</p>
+        <p>Die lokale Analyse startet automatisch nach dem Upload. Video wird nicht hochgeladen.</p>
         <input id="videoInput" type="file" accept="video/*" />
         <div class="video-wrap">
-          <video id="videoPreview" controls></video>
+          <video id="videoPreview" controls playsinline></video>
         </div>
-        <label class="toggle">
-          <input id="cvToggle" type="checkbox" />
-          <span>Videoanalyse (Blickkontakt & Gestik) aktivieren</span>
-        </label>
         <div class="meta" id="videoMeta">Noch kein Video geladen.</div>
-        <div class="meta" id="cvStatus">Videoanalyse aus.</div>
+        <div class="meta" id="analysisStatus">Warte auf Video.</div>
       </div>
       <div class="card">
-        <h2>2. Transkript hinzufügen</h2>
-        <p>Nutze z. B. deine eigene Mitschrift oder eine Transkription aus dem Smartphone.</p>
+        <h2>2. Transkript (optional)</h2>
+        <p>Nur optional für KI-Feedback. Die Kernanalyse basiert auf dem Video/Auftritt.</p>
         <textarea id="transcript" rows="10" placeholder="Füge hier das Transkript deiner Rede ein …"></textarea>
         <div class="meta" id="transcriptMeta">Wörter: 0 · Tempo: –</div>
       </div>
@@ -50,7 +46,7 @@
         <div id="rubric"></div>
       </div>
       <div class="card">
-        <h2>4. Analyse & Score</h2>
+        <h2>4. Videoanalyse & Score</h2>
         <div class="scoreboard">
           <div>
             <div class="label">Gesamtpunkte</div>
@@ -65,24 +61,24 @@
           <div>
             <div class="label">Sprechtempo</div>
             <div class="value" id="tempoScore">–</div>
-            <div class="hint">Orientierung: 110–150 Wörter/Min.</div>
+            <div class="hint">Geschätzt aus Audio-Rhythmus.</div>
           </div>
           <div>
             <div class="label">Pausenanteil</div>
             <div class="value" id="pauseScore">–</div>
-            <div class="hint">Optional (falls Audioanalyse möglich).</div>
+            <div class="hint">Aus Audio automatisch erkannt.</div>
           </div>
         </div>
         <div class="scoreboard cv-board">
           <div>
             <div class="label">Blickkontakt (Proxy)</div>
             <div class="value" id="eyeScore">–</div>
-            <div class="hint">Anteil der Frames mit Gesicht zentriert.</div>
+            <div class="hint">Wenn Browser Face-Detection unterstützt.</div>
           </div>
           <div>
-            <div class="label">Gestik (Bewegung)</div>
+            <div class="label">Bewegungsenergie</div>
             <div class="value" id="gestureScore">–</div>
-            <div class="hint">Bewegung der Hände pro Sekunde.</div>
+            <div class="hint">Veränderung zwischen Videoframes.</div>
           </div>
           <div>
             <div class="label">Gesicht erkannt</div>
@@ -91,7 +87,7 @@
           </div>
         </div>
         <div class="actions">
-          <button id="analyzeBtn" class="primary">Analyse starten</button>
+          <button id="analyzeBtn" class="primary">Video erneut analysieren</button>
           <button id="downloadBtn" class="ghost">Bericht herunterladen</button>
         </div>
       </div>
@@ -106,9 +102,9 @@
 
     <section class="card ai">
       <h2>6. KI-Feedback (optional)</h2>
-      <p>Für diese Funktion wird ein OpenAI‑API‑Key auf dem Server benötigt. Das Transkript wird an die API gesendet.</p>
+      <p>Für diese Funktion wird ein OpenAI‑API‑Key auf dem Server benötigt. Die API bekommt Analysewerte, Keyframes und optional das Transkript.</p>
       <div class="actions">
-        <button id="aiBtn" class="primary">KI‑Feedback generieren</button>
+        <button id="aiBtn" class="primary">KI schaut Video (Keyframes) an</button>
       </div>
       <div class="meta" id="aiStatus">Noch keine KI‑Analyse.</div>
       <div id="aiFeedback"></div>
@@ -128,8 +124,6 @@
     <p>Bereit für GitHub: Dieses Projekt besteht aus statischen Dateien und einem kleinen Express‑Server.</p>
   </footer>
 
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
