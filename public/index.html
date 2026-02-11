@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Reden-Beurteilungsroboter - Eroeffnungsrede</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="/styles.css" onerror="this.onerror=null;this.href='styles.css';" />
 </head>
 <body>
   <div class="hero">
@@ -116,6 +116,17 @@
     <p>Bereit für GitHub: Dieses Projekt besteht aus statischen Dateien und einem kleinen Express‑Server.</p>
   </footer>
 
-  <script src="./app.js"></script>
+  <script>
+    (function () {
+      var script = document.createElement('script');
+      script.src = '/app.js';
+      script.onerror = function () {
+        var fallback = document.createElement('script');
+        fallback.src = 'app.js';
+        document.body.appendChild(fallback);
+      };
+      document.body.appendChild(script);
+    })();
+  </script>
 </body>
 </html>
