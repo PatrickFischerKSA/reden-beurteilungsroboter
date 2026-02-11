@@ -130,8 +130,9 @@ app.post('/api/ai-feedback', async (req, res) => {
 
   const promptText = `
 Du bist ein deutschsprachiger Rhetorik-Coach.
-Bewerte eine Eröffnungsrede lernfoerderlich und konstruktiv.
-Gib konkrete, umsetzbare Tipps ohne zu beurteilen, ob der Inhalt wahr ist.
+Bewerte eine Eroeffnungsrede lernfoerderlich und konstruktiv.
+Fokus ist der gehaltene Auftritt (Sprechweise, Koerpersprache, Wirkung), nicht die inhaltliche Wahrheit.
+Gib konkrete, umsetzbare Tipps.
 
 Kriterienraster (vereinfacht):
 - Inhalt: Korrektheit der Behauptungen, Schlüssigkeit, Strategie, Problembewusstsein, Breite, Publikumsgerechtigkeit.
@@ -141,10 +142,10 @@ Kriterienraster (vereinfacht):
 Messwerte:
 ${JSON.stringify(metrics || {}, null, 2)}
 
-Selbsteinschätzung:
+Optionale Zusatzwerte:
 ${JSON.stringify(scores || {}, null, 2)}
 
-Transkript (optional):
+Transkript (optional, kann leer sein):
 ${transcript || '(nicht vorhanden)'}
 
 Antworte als JSON mit:
