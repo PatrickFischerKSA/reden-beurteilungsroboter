@@ -1,7 +1,33 @@
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  const raw = fs.readFileSync(filePath, 'utf8');
+  raw.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) return;
+    const idx = trimmed.indexOf('=');
+    if (idx < 1) return;
+    const key = trimmed.slice(0, idx).trim();
+    let value = trimmed.slice(idx + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (!(key in process.env)) {
+      process.env[key] = value;
+    }
+  });
+}
+
+loadEnvFile(path.join(__dirname, '.env.local'));
+loadEnvFile(path.join(__dirname, '.env'));
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
@@ -124,7 +150,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.post('/api/ai-feedback', async (req, res) => {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_DEFAULT;
   const model = process.env.OPENAI_MODEL || 'gpt-4.1';
 
   if (!apiKey) {
@@ -243,7 +269,7 @@ Antworte als JSON mit:
 });
 
 app.post('/api/transcribe-audio', async (req, res) => {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_DEFAULT;
   const model = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
 
   if (!apiKey) {

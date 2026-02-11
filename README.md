@@ -31,11 +31,13 @@ Die lokale Analyse verarbeitet das Video im Browser. Bei aktivierter KI-Analyse 
 
 ## OpenAI Setup (optional)
 
-Fuer KI-Feedback wird ein API-Key benoetigt und serverseitig als Umgebungsvariable gesetzt:
+Default ist jetzt eine lokale Datei `.env.local` im Projektordner.
+Trage dort deinen Key einmal ein, dann ist kein `export` pro Session mehr noetig:
 
 ```bash
-export OPENAI_API_KEY="sk-..."
-export OPENAI_MODEL="gpt-4.1"
+OPENAI_API_KEY_DEFAULT="sk-..."
+OPENAI_MODEL="gpt-4.1"
+OPENAI_TRANSCRIBE_MODEL="gpt-4o-mini-transcribe"
 ```
 
 ## Videoanalyse (optional)
