@@ -6,6 +6,13 @@ const WebSocket = require('ws');
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '35mb' }));
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  return next();
+});
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -110,6 +117,10 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`Server running at http://localhost:${PORT}`);
+});
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, service: 'reden-beurteilungsroboter-api' });
 });
 
 app.post('/api/ai-feedback', async (req, res) => {
