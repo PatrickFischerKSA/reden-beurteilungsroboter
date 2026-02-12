@@ -57,7 +57,6 @@ function getApiBaseCandidates() {
   const origin = window.location.origin;
   if (origin && origin !== 'null' && origin.startsWith('http')) candidates.push(origin);
   candidates.push('http://localhost:3000');
-  candidates.push('http://127.0.0.1:3000');
   return [...new Set(candidates)];
 }
 
@@ -93,7 +92,7 @@ async function postJsonWithFallback(path, payload) {
     } catch (err) {
       const baseMsg = err && err.message ? err.message : 'Netzwerkfehler';
       if (String(baseMsg).includes('Failed to fetch')) {
-        lastError = `${url}: Server nicht erreichbar. Starte die App mit npm start und oeffne http://localhost:3000`;
+        lastError = `${url}: Server nicht erreichbar. Im Terminal: cd "/Users/patrickfischer/Documents/New project" && npm start`;
       } else {
         lastError = `${url}: ${baseMsg}`;
       }
@@ -416,6 +415,10 @@ async function analyzeVideoFrames(onProgress) {
   const keyframeSteps = new Set([0, Math.floor(sampleCount * 0.5), sampleCount - 1]);
 
   const keyframes = [];
+  const keyCanvas = document.createElement('canvas');
+  keyCanvas.width = 320;
+  keyCanvas.height = 180;
+  const keyCtx = keyCanvas.getContext('2d');
   let previous = null;
   let motionSum = 0;
   let motionFrames = 0;
@@ -728,6 +731,9 @@ async function init() {
   if (!health.ok) {
     aiStatus.textContent = `API nicht erreichbar: ${health.error}`;
     updateDebugBox({ apiHealth: 'nicht erreichbar', lastError: health.error, keySource: 'server' });
+    if (!window.location.origin.includes('localhost:3000')) {
+      analysisStatus.textContent = 'Du nutzt nicht localhost:3000. Bitte App ueber npm start starten und http://localhost:3000 oeffnen.';
+    }
   } else if (!health.payload.keyConfigured) {
     aiStatus.textContent = 'API erreichbar, aber kein OPENAI_API_KEY konfiguriert.';
     updateDebugBox({ apiHealth: 'ok', keySource: 'none' });
@@ -856,7 +862,3 @@ testApiBtn.addEventListener('click', async () => {
     keySource: health.payload.keySource || (health.payload.keyConfigured ? 'server-env' : 'none')
   });
 });
-  const keyCanvas = document.createElement('canvas');
-  keyCanvas.width = 320;
-  keyCanvas.height = 180;
-  const keyCtx = keyCanvas.getContext('2d');
